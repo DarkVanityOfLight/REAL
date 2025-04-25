@@ -1,7 +1,8 @@
 from typing import Tuple
 from pysmt.fnode import FNode
+import pysmt.environment
 
-from RamseyQuantors.operators import RAMSEY_NODE_TYPE
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedFNode(FNode):
@@ -36,3 +37,20 @@ class ExtendedFNode(FNode):
 
         # For standard quantifiers, payload is a sequence of FNode
         return tuple(payload)
+
+    def is_mod(self) -> bool:
+        """Return True if this node is a Modulo operator."""
+        return self.node_type() == MOD_NODE_TYPE
+
+    def __mod__(self, right):
+        return self._apply_infix(right, _mgr().Mod, _mgr().BVURem)
+
+
+def _env():
+    """Aux function to obtain the environment."""
+    return pysmt.environment.get_env()
+
+
+def _mgr():
+    """Aux function to obtain the formula manager."""
+    return pysmt.environment.get_env().formula_manager

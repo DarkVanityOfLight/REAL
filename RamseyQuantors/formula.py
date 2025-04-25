@@ -2,7 +2,7 @@ from pysmt.formula import FormulaManager
 from pysmt.fnode import FNodeContent
 
 from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.operators import RAMSEY_NODE_TYPE
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedFormulaManager(FormulaManager):
@@ -61,3 +61,11 @@ class ExtendedFormulaManager(FormulaManager):
             args=(formula,),
             payload=payload
         )
+
+    def Mod(self, left, right):
+        """Create a Modulo expression of the form: left mod right"""
+
+        return self.create_node(
+            node_type=MOD_NODE_TYPE,
+            args=(left, right))
+

@@ -1,7 +1,7 @@
 from pysmt.printers import HRPrinter, HRSerializer
 from pysmt.exceptions import PysmtTypeError
 
-from RamseyQuantors.operators import RAMSEY_NODE_TYPE
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedPrinter(HRPrinter):
@@ -12,6 +12,7 @@ class ExtendedPrinter(HRPrinter):
     def __init__(self, stream, env=None):
         super().__init__(stream, env)
         self.functions[RAMSEY_NODE_TYPE] = self.walk_ramsey
+        #self.functions[MOD_NODE_TYPE] = self.walk_mod
 
     def walk_ramsey(self, formula):
         """
@@ -46,6 +47,7 @@ class ExtendedPrinter(HRPrinter):
         yield formula.arg(0)
         self.write(")")
 
+    def walk_mod(self, formula): return self.walk_nary(formula, " mod ")
 
 class ExtendedSerializer(HRSerializer):
     """

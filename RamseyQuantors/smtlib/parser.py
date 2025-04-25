@@ -1,12 +1,14 @@
-
+import functools
 from pysmt.smtlib.parser import SmtLibParser
-from RamseyQuantors.operators import RAMSEY_QUANTIFIER_NAME
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_QUANTIFIER_NAME
 
 class ExtendedSmtLibParser(SmtLibParser):
     def __init__(self, environment=None, interactive=False):
         super().__init__(environment, interactive)
         # Register the custom "ramsey" operator
         self.interpreted[RAMSEY_QUANTIFIER_NAME] = self._enter_ramsey
+        self.interpreted["mod"] = self._operator_adapter(self._modulo)
+
 
     def _enter_ramsey(self, stack, tokens, key):
         # 1) Parse the sort (either T or (T))
@@ -59,3 +61,6 @@ class ExtendedSmtLibParser(SmtLibParser):
         syms2 = [var for _, var in vrs2]
 
         return self.env.formula_manager.Ramsey(syms1, syms2, body)
+
+    def _modulo(self, left, right):
+        return self.env.formula_manager.Mod(left, right)

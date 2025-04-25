@@ -3,7 +3,7 @@ from pysmt.typing import BOOL, INT, REAL
 from pysmt.type_checker import SimpleTypeChecker
 from pysmt.walkers import handles
 
-from RamseyQuantors.operators import RAMSEY_NODE_TYPE
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedTypeChecker(SimpleTypeChecker):
@@ -49,3 +49,8 @@ class ExtendedTypeChecker(SimpleTypeChecker):
             raise PysmtTypeError(f"RAMSEY vars must be Int or Real, got {seen_type}")
 
         return BOOL
+
+
+    @handles(MOD_NODE_TYPE)
+    def walk_mod(self, formula, args, **kwargs):
+        return self.walk_type_to_type(formula, args, INT, INT)

@@ -15,3 +15,7 @@ def Ramsey(vv1, vv2, formula):
     """
     fm = get_env().formula_manager
     return fm.Ramsey(vv1, vv2, formula)
+
+def Mod(left, right):
+    r""".. math:: l % r """
+    return get_env().formula_manager.Mod(left, right)
