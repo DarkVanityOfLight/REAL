@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Self, Tuple
 from pysmt.fnode import FNode
 import pysmt.environment
 
@@ -20,7 +20,7 @@ class ExtendedFNode(FNode):
         """Return True if this node is any quantifier (exists, forall, or Ramsey)."""
         return self.is_exists() or self.is_forall() or self.is_ramsey()
 
-    def quantifier_vars(self) -> Tuple[FNode, ...]:
+    def quantifier_vars(self) -> Tuple[Self, ...]:
         """
         Return a tuple of bound variables for this quantifier.
 

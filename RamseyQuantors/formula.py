@@ -63,7 +63,7 @@ class ExtendedFormulaManager(FormulaManager):
         )
 
     def Mod(self, left, right):
-        """Create a Modulo expression of the form: left mod right"""
+        """Create a Modulo expression of the form: left % right"""
 
         return self.create_node(
             node_type=MOD_NODE_TYPE,

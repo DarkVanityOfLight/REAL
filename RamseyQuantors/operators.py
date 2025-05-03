@@ -12,3 +12,4 @@ pysmt.operators.__OP_STR__[RAMSEY_NODE_TYPE] = "RAMSEY"
 MOD_NAME = "mod"
 MOD_NODE_TYPE = new_node_type(None, MOD_NAME.upper())
 pysmt.operators.__OP_STR__[MOD_NODE_TYPE] = "MOD"
+#TODO: Add to IRA maybe?
