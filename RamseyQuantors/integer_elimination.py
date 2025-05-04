@@ -6,7 +6,7 @@ from pysmt.typing import BOOL, INT
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
-from typing import Dict, Optional, Tuple, cast, List, Iterable
+from typing import Dict, Optional, Tuple, cast, List, Iterable, Set
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
 
@@ -48,36 +48,39 @@ def restrict_to_bool(values: List[FNode]):
 
 def split_left_right(atom: FNode, vars1: Iterable[FNode]) -> Tuple[FNode, FNode]:
     """
-    Given an atom return the side that contains vars1 as first and the other as second.
-    This assumes that each side only contains either vars1 or not vars1 and vars1 does not appear on both or no side
+    Return (side_with_vars1, side_without).  Raise if vars1 is on both or neither side.
     """
+    assert isAtom(atom)
+    vars1 = set(vars1)
+    left, right = atom.arg(0), atom.arg(1)
 
-    stack : List[FNode] = [atom.arg(0)]
-    while stack:
-        node = stack.pop()
+    # helper to collect all symbol-nodes in a subtree
+    def collect_vars(node: FNode, acc: Set[FNode]):
+        if node.node_type() == SYMBOL:
+            acc.add(node)
+        elif node.node_type() in IRA_OPERATORS or node.node_type() == MOD_NODE_TYPE:
+            for c in node.args():
+                collect_vars(c, acc)
+        # else: constants/literals etc.
 
-        match node:
-            case op if op in IRA_OPERATORS or op == MOD_NODE_TYPE:
-                for t in node.args():
-                    stack.append(t)
-            case op if op == SYMBOL:
-                if node in vars1:
-                    return (atom.arg(0), atom.arg(1))
+    left_syms, right_syms = set(), set()
+    collect_vars(left, left_syms)
+    collect_vars(right, right_syms)
 
-    stack : List[FNode] = [atom.arg(1)]
-    while stack:
-        node = stack.pop()
+    left_hits  = left_syms  & vars1
+    right_hits = right_syms & vars1
 
-        match node.node_type():
-            case op if op in IRA_OPERATORS or op == MOD_NODE_TYPE:
-                for t in node.args():
-                    stack.append(t)
-            case op if op == SYMBOL:
-                if node in vars1:
-                    return (atom.arg(1), atom.arg(0))
-         
+    if left_hits and not right_hits:
+        return left, right
+    if right_hits and not left_hits:
+        return right, left
 
-    raise Exception(f"No variables of {vars1} were found on either side of the atom {atom}")
+    # no hits or ambiguous
+    raise Exception(
+        f"vars1={sorted(vars1)} found on both sides "
+        f"({sorted(left_hits)} | {sorted(right_hits)}) "
+        f"for atom: {atom}"
+    )
 
 
 def collect_subterms_of_var(term: FNode, vars: Iterable[FNode]) -> Optional[FNode]:
