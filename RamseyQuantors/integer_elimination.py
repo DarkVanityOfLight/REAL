@@ -267,7 +267,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     o = len(vars1)
 
     x0, x = [], []
-    for i in range(1):
+    for i in range(o):
         x0.append(Symbol(f"x0_{i}", INT))
         x.append(Symbol(f"x{i}", INT))
 
