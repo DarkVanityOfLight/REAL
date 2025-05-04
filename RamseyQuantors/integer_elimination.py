@@ -144,7 +144,7 @@ def push_negations_inside(qformula: FNode):
 
 def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
     """
-    Take in a quantifier free formula of the form term ~ term with ~ in {<, >, <=, >=, =} 
+    Take in a formula of the form term ~ term with ~ in {<, >, <=, >=, =} 
     or (term) % e = (term) % e
 
     Return an equivalent formula using only <, > and term %e = term %e
@@ -170,6 +170,12 @@ def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
 
         case op if op == operators.LE: # GE is eliminated when parsing
             return formula.arg(0) < (formula.arg(1) + 1)
+
+        case op if op == operators.EXISTS:
+            return Exists(formula.quantifier_vars(), make_as_inequality(formula.arg(0)))
+        case op if op == RAMSEY_NODE_TYPE:
+            vv1, vv2 = formula.quantifier_vars()
+            return Ramsey(vv1, vv2, make_as_inequality(formula.arg(0)))
 
     return formula
 
