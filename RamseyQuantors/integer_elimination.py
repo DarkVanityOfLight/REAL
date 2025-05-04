@@ -103,6 +103,43 @@ def collect_subterms_of_var(term: FNode, vars: Iterable[FNode]) -> Optional[FNod
 
     return Plus(terms) if len(terms) > 0 else None
 
+
+def push_negations_inside(qformula: FNode):
+    """Takes in a quantifier free formula,
+    and returns an equivalent formula with all negations pushed down onto the atoms
+    """
+    if isAtom(qformula):
+        return qformula
+    
+    match qformula.node_type():
+        case op if op == AND:
+           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
+        case op if op == OR:
+           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
+        case op if op == NOT:
+            subformula = qformula.arg(0)
+
+            if isAtom(subformula):
+                return Not(subformula)
+
+            match subformula.node_type():
+                case op if op == NOT:
+                    return push_negations_inside(subformula)
+                case op if op == AND:
+                    return Or([push_negations_inside(Not(child)) for child in subformula.args()])
+                case op if op == OR:
+                    return And([push_negations_inside(Not(child)) for child in subformula.args()])
+                case op if op == IMPLIES:
+                    # ~(a -> b) <=> ~(~ a \/ b) <=> a /\ ~ b
+                    return And(push_negations_inside(subformula.arg(0)), push_negations_inside(Not(subformula.arg(1))))
+                case op if op == IFF:
+                    # ~(a <-> b) <=> (~a \/ ~b) /\ (a \/ b)
+                    return And(
+                            Or(push_negations_inside(Not(subformula.arg(0))), push_negations_inside(Not(subformula.arg(1)))),
+                            Or(push_negations_inside(subformula.args(0)), push_negations_inside(subformula.args(1))))
+
+
+
 # ============= Elimination =============
 
 def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
