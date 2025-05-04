@@ -24,16 +24,13 @@ class ExtendedFNode(FNode):
         """
         Return a tuple of bound variables for this quantifier.
 
-        For Ramsey, returns concatenation of the two variable groups.
+        For Ramsey, returns the two variable groups.
         For exists/forall, returns the single payload of variables.
         """
         if not self.is_quantifier():
             raise AssertionError("Node is not a quantifier")
 
         payload = self._content.payload
-        if self.is_ramsey():
-            left_vars, right_vars = payload  # two tuples of FNode
-            return tuple(left_vars) + tuple(right_vars)
 
         # For standard quantifiers, payload is a sequence of FNode
         return tuple(payload)
