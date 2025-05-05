@@ -8,7 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import make_nice_formulas, make_as_inequality
+from RamseyQuantors.simplifications import arithmetic_simplifier, solve_for, make_as_inequality
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
 
@@ -69,9 +69,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     assert qformula.node_type() == RAMSEY_NODE_TYPE
 
     formula = qformula.arg(0)
-    formula = make_nice_formulas(formula, qformula.quantifier_vars()[0]).simplify()
-
-    print(formula.serialize())
+    formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify() # TODO: Move somewhere else and assume the form
 
     # TODO: What should happen if an atom appears twice
     eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))

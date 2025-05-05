@@ -3,11 +3,19 @@ import pysmt.typing as typ
 import pysmt.operators as operators
 
 from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.operators import MOD_NODE_TYPE
+from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from RamseyQuantors.shortcuts import Ramsey
 from typing import Tuple, List, Iterable, Set, Optional
 
-from pysmt.operators import AND, OR, IFF, IMPLIES, NOT, EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES
-from pysmt.shortcuts import Int, And, Or, Equals, Plus
+from pysmt.operators import AND, OR, IFF, IMPLIES, NOT, EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES, EXISTS, FORALL
+from pysmt.shortcuts import Int, And, Or, Equals, Plus, Not, Iff, Implies, Exists, ForAll
+
+
+def subterm(node: FNode, vars: Iterable[FNode], keep_with: bool) -> FNode:
+    """Helper: extract the sum of (multi)terms that do (or don’t) contain any of `vars`."""
+    with_terms, without_terms = collect_subterms_of_var(node, vars)
+    return with_terms if keep_with else without_terms
+
 
 def isAtom(atom: FNode) -> bool:
     """
@@ -82,7 +90,7 @@ def split_left_right(atom: FNode, vars1: Iterable[FNode]) -> Tuple[FNode, FNode]
 def collect_subterms_of_var(
     term: FNode,
     vars: Iterable[FNode]
-) -> Tuple[Optional[FNode], Optional[FNode]]:
+) -> Tuple[FNode, FNode]:
     """
     Walk a normal-form term and split its multiplicative subterms into
     those that contain any of `vars` and those that contain none.
@@ -121,3 +129,30 @@ def collect_subterms_of_var(
         Plus(without_terms) if without_terms else Int(0)
     )
 
+
+def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
+    """ Walk over the formula, preserve its logical structure and apply f to the atoms"""
+
+    if isAtom(formula):
+        
+        return f(formula)
+    
+    match formula.node_type():
+        case op if op == AND:
+           return And([apply_to_atoms(subformula, f) for subformula in formula.args()]) 
+        case op if op == OR:
+           return And([apply_to_atoms(subformula, f) for subformula in formula.args()]) 
+        case op if op == NOT:
+            return Not(apply_to_atoms(formula.arg(0), f))
+        case op if op == IFF:
+            return Iff(apply_to_atoms(formula.arg(0), f), apply_to_atoms(formula.arg(1), f))
+        case op if op == IMPLIES:
+            return Implies(apply_to_atoms(formula.arg(0), f), apply_to_atoms(formula.arg(1), f))
+        case op if op == EXISTS:
+            return Exists(formula.quantifier_vars(), apply_to_atoms(formula.arg(0), f))
+        case op if op == FORALL:
+            return ForAll(formula.quantifier_vars(), apply_to_atoms(formula.arg(0), f))
+        case op if op == RAMSEY_NODE_TYPE:
+            return Ramsey(formula.quantifier_vars()[0], formula.quantifier_vars()[1], apply_to_atoms(formula.arg(0), f))
+    
+    raise Exception(f"Unhandled node type {formula}")
