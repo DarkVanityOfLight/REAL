@@ -1,6 +1,8 @@
 from pysmt.exceptions import PysmtTypeError
 from pysmt.operators import INT_CONSTANT
 from pysmt.typing import BOOL, INT, REAL
+import pysmt.operators
+
 from pysmt.type_checker import SimpleTypeChecker
 from pysmt.walkers import handles
 
@@ -54,5 +56,5 @@ class ExtendedTypeChecker(SimpleTypeChecker):
 
     @handles(MOD_NODE_TYPE)
     def walk_mod(self, formula, args, **kwargs):
-        assert formula.args(1) == INT_CONSTANT
+        assert formula.arg(1).node_type() == INT_CONSTANT
         return self.walk_type_to_type(formula, args, INT, INT)
