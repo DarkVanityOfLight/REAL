@@ -1,183 +1,18 @@
-from pysmt import operators
-from pysmt.fnode import IRA_OPERATORS, FNode
-from pysmt.operators import AND, EQUALS, IFF, IMPLIES, OR, NOT, PLUS, SYMBOL, TIMES
+from pysmt.fnode import FNode
+from pysmt.operators import EQUALS
 from pysmt.shortcuts import FALSE, LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
-from pysmt.typing import BOOL, INT
+from pysmt.typing import INT
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
-from typing import Dict, Optional, Tuple, cast, List, Iterable, Set
+from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
+from RamseyQuantors.simplifications import make_nice_formulas, make_as_inequality
+
+from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
 
 
-
-# ============= Utils =============
-def isAtom(atom: FNode) -> bool:
-    """
-    Check if the given node is an atom, that is an equation of the form
-    ... ~ ... with ~ in { =, <, > }
-    """
-    return atom.get_type() == BOOL and (atom.node_type() in operators.IRA_RELATIONS or atom.node_type() == operators.EQUALS)
-
-# TODO: Find a good way to merge with the initial simplification
-def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ExtendedFNode]]:
-    """Collect all atoms, as (inequalities, equalities)"""
-    eqs = []
-    ineqs = []
-
-    stack = [formula]
-    while stack:
-        subformula = stack.pop()
-        match subformula.node_type():
-            case op if op in {AND, OR, IFF, IMPLIES, NOT}:
-                for arg in subformula.args():
-                    stack.append(arg)
-            case op if op == EQUALS:
-                eqs.append(subformula)
-            case op if op == operators.LT:
-                ineqs.append(subformula)
-            case _:
-                print(f"Did not handle {subformula} when collecting atoms.")
-
-    return tuple(eqs), tuple(ineqs)
-    
-def restrict_to_bool(values: List[FNode]):
-    """Given a list of symbols, return a formula that restricts them to integer 0 or 1"""
-    return And([Or(Equals(v, Int(1)), Equals(v, Int(0))) for v in values])
-
-def split_left_right(atom: FNode, vars1: Iterable[FNode]) -> Tuple[FNode, FNode]:
-    """
-    Return (side_with_vars1, side_without).  Raise if vars1 is on both or neither side.
-    """
-    assert isAtom(atom)
-    vars1 = set(vars1)
-    left, right = atom.arg(0), atom.arg(1)
-
-    # helper to collect all symbol-nodes in a subtree
-    def collect_vars(node: FNode, acc: Set[FNode]):
-        if node.node_type() == SYMBOL:
-            acc.add(node)
-        elif node.node_type() in IRA_OPERATORS or node.node_type() == MOD_NODE_TYPE:
-            for c in node.args():
-                collect_vars(c, acc)
-        # else: constants/literals etc.
-
-    left_syms, right_syms = set(), set()
-    collect_vars(left, left_syms)
-    collect_vars(right, right_syms)
-
-    left_hits  = left_syms  & vars1
-    right_hits = right_syms & vars1
-
-    if left_hits and not right_hits:
-        return left, right
-    if right_hits and not left_hits:
-        return right, left
-
-    # no hits or ambiguous
-    raise Exception(
-        f"vars1={sorted(vars1)} found on both sides "
-        f"({sorted(left_hits)} | {sorted(right_hits)}) "
-        f"for atom: {atom}"
-    )
-
-
-def collect_subterms_of_var(term: FNode, vars: Iterable[FNode]) -> Optional[FNode]:
-    """From a normal form term collect all coefficients of variables vars"""
-
-    terms = []
-
-    stack : List[FNode] = [term]
-    while stack:
-        node : FNode = stack.pop()
-
-        match node.node_type():
-            case op if op == PLUS:
-                for sub in node.args():
-                    stack.append(sub)
-
-            case op if op == TIMES:
-                if any([t in vars for t in node.args()]):
-                    terms.append(node)
-
-    return Plus(terms) if len(terms) > 0 else None
-
-
-def push_negations_inside(qformula: FNode):
-    """Takes in a quantifier free formula,
-    and returns an equivalent formula with all negations pushed down onto the atoms
-    """
-    if isAtom(qformula):
-        return qformula
-    
-    match qformula.node_type():
-        case op if op == AND:
-           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
-        case op if op == OR:
-           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
-        case op if op == NOT:
-            subformula = qformula.arg(0)
-
-            if isAtom(subformula):
-                return Not(subformula)
-
-            match subformula.node_type():
-                case op if op == NOT:
-                    return push_negations_inside(subformula)
-                case op if op == AND:
-                    return Or([push_negations_inside(Not(child)) for child in subformula.args()])
-                case op if op == OR:
-                    return And([push_negations_inside(Not(child)) for child in subformula.args()])
-                case op if op == IMPLIES:
-                    # ~(a -> b) <=> ~(~ a \/ b) <=> a /\ ~ b
-                    return And(push_negations_inside(subformula.arg(0)), push_negations_inside(Not(subformula.arg(1))))
-                case op if op == IFF:
-                    # ~(a <-> b) <=> (~a \/ ~b) /\ (a \/ b)
-                    return And(
-                            Or(push_negations_inside(Not(subformula.arg(0))), push_negations_inside(Not(subformula.arg(1)))),
-                            Or(push_negations_inside(subformula.args(0)), push_negations_inside(subformula.args(1))))
-
-
-
-# ============= Elimination =============
-
-def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
-    """
-    Take in a formula of the form term ~ term with ~ in {<, >, <=, >=, =} 
-    or (term) % e = (term) % e
-
-    Return an equivalent formula using only <, > and term %e = term %e
-    """
-
-    match formula.node_type():
-        # If we have a logical connective pass it through
-        case op if op == AND:
-           return And([make_as_inequality(cast(ExtendedFNode, subformula)) for subformula in formula.args()])
-        case op if op == OR:
-           return Or([make_as_inequality(cast(ExtendedFNode, subformula)) for subformula in formula.args()])
-        case op if op == NOT:
-            return Not(make_as_inequality(formula.arg(0)))
-
-        # If we have equality or non strict inequalities, eliminate
-        case op if op == EQUALS: # != is eliminated when parsing
-            if any([subformula.node_type() == MOD_NODE_TYPE for subformula in formula.args()]): return formula
-
-            # a = b <==>
-            # a <= b => a < b+1
-            # b <= a => b < a + 1
-            return And(formula.arg(0) < (formula.arg(1) + 1), formula.arg(1) < (formula.arg(0) + 1))
-
-        case op if op == operators.LE: # GE is eliminated when parsing
-            return formula.arg(0) < (formula.arg(1) + 1)
-
-        case op if op == operators.EXISTS:
-            return Exists(formula.quantifier_vars(), make_as_inequality(formula.arg(0)))
-        case op if op == RAMSEY_NODE_TYPE:
-            vv1, vv2 = formula.quantifier_vars()
-            return Ramsey(vv1, vv2, make_as_inequality(formula.arg(0)))
-
-    return formula
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
 
@@ -234,9 +69,12 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     assert qformula.node_type() == RAMSEY_NODE_TYPE
 
     formula = qformula.arg(0)
+    formula = make_nice_formulas(formula, qformula.quantifier_vars()[0]).simplify()
+
+    print(formula.serialize())
 
     # TODO: What should happen if an atom appears twice
-    eqs, ineqs = collect_atoms(formula)
+    eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
     n, m = len(eqs), len(ineqs)
 
     # Introduce new symbols to guess which atoms should be satisfied
@@ -291,10 +129,14 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # Construct gamma
     gamma = []
     for i, ineq in enumerate(ineqs):
+
+        # TODO: Write a simplify function that brings the formula into this shape
+        # r x < s y + t z + h
+
         # Check wich side contains our first variable vector
         left, right = split_left_right(ineq, vars1)
 
-        terms_with_vars2 = collect_subterms_of_var(right, vars2)
+        terms_with_vars2, terms_without_vars2 = collect_subterms_of_var(right, vars2)
 
         g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left.substitute(sub_var1_with_x0), p[2*i]), LE(left.substitute(sub_var1_with_x), Int(0))))
         g2 = Or(Equals(omega[2*i+1], Int(1)), 
@@ -327,7 +169,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         g2 = Equals(left.substitute(sub_var1_with_x), 0)
 
         # vx % e = 0
-        vx : FNode = Plus(collect_subterms_of_var(right, vars2))
+        vx : FNode = Plus(collect_subterms_of_var(right, vars2)[0])
         mod_div = eq.arg(0).arg(1)
         g3 = Equals(Mod(vx.substitute(sub_var2_with_x), mod_div), 0)
 
