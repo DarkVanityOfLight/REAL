@@ -3,12 +3,13 @@ import pysmt.typing as typ
 import pysmt.operators as operators
 
 from RamseyQuantors.fnode import ExtendedFNode
+from RamseyQuantors.formula import ExtendedFormulaManager
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from RamseyQuantors.shortcuts import Ramsey
-from typing import Tuple, List, Iterable, Set, Optional
+from typing import Tuple, List, Iterable, Set, Optional, cast
 
 from pysmt.operators import AND, OR, IFF, IMPLIES, NOT, EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES, EXISTS, FORALL
-from pysmt.shortcuts import Int, And, Or, Equals, Plus, Not, Iff, Implies, Exists, ForAll
+from pysmt.shortcuts import Int, And, Or, Equals, Plus, Not, Iff, Implies, Exists, ForAll, get_env
 
 
 def subterm(node: FNode, vars: Iterable[FNode], keep_with: bool) -> FNode:
@@ -156,3 +157,8 @@ def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
             return Ramsey(formula.quantifier_vars()[0], formula.quantifier_vars()[1], apply_to_atoms(formula.arg(0), f))
     
     raise Exception(f"Unhandled node type {formula}")
+    
+
+def create_node(node_type, args, payload=None):
+    mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
+    return mngr.create_node(node_type, args, payload)

@@ -1,12 +1,12 @@
 from pysmt.fnode import FNode
-from pysmt.operators import AND, OR, EQUALS, PLUS, NOT, IMPLIES, IFF, TIMES, MINUS
+from pysmt.operators import AND, EXISTS, FORALL, OR, EQUALS, PLUS, NOT, IMPLIES, IFF, TIMES, MINUS
 import pysmt.operators as operators
-from pysmt.shortcuts import And, Or, LT, Minus, Exists, Plus, Times, Not, Int
+from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Minus, Exists, Plus, Times, Not, Int, get_env
 from RamseyQuantors.shortcuts import Ramsey
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import RAMSEY_NODE_TYPE, MOD_NODE_TYPE
 from typing import Iterable, Tuple, cast, Dict
-from RamseyQuantors.formula_utils import subterm, isAtom, apply_to_atoms
+from RamseyQuantors.formula_utils import create_node, subterm, isAtom, apply_to_atoms
 
 
 def solve_for(f: FNode, vars: Iterable[FNode]) -> FNode:
@@ -144,23 +144,29 @@ def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
 
 
 
-def push_negations_inside(qformula: FNode):
-    """Takes in a quantifier free formula,
-    and returns an equivalent formula with all negations pushed down onto the atoms
+def push_negations_inside(formula: FNode):
+    """Takes in a formula,
+    and returns an equivalent formula with all negations pushed down onto the atoms.
     """
-    if isAtom(qformula):
-        return qformula
+    if isAtom(formula):
+        return formula
     
-    match qformula.node_type():
-        case op if op == AND:
-           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
-        case op if op == OR:
-           return And([push_negations_inside(subformula) for subformula in qformula.args()]) 
+    match formula.node_type():
         case op if op == NOT:
-            subformula = qformula.arg(0)
+            subformula = formula.arg(0)
 
             if isAtom(subformula):
-                return Not(subformula)
+                left, right = subformula.args()
+                match subformula.node_type():
+                    case op if op == operators.LE:
+                        # ~(x <= y) => y < x
+                        return LT(right, left)
+                    case op if op == operators.LT:
+                        # ~(x < y) => y <= x
+                        return LE(right, left)
+                    case op if op == EQUALS:
+                        # ~ (x = y) => x < y \/ y < x
+                        return Or(LT(left, right), GT(left, right))
 
             match subformula.node_type():
                 case op if op == NOT:
@@ -177,5 +183,11 @@ def push_negations_inside(qformula: FNode):
                     return And(
                             Or(push_negations_inside(Not(subformula.arg(0))), push_negations_inside(Not(subformula.arg(1)))),
                             Or(push_negations_inside(subformula.args(0)), push_negations_inside(subformula.args(1))))
-
+                case op if op == FORALL:
+                    return Exists(subformula.quantifier_vars, Not(subformula.arg(0)))
+                case op if op == EXISTS:
+                    return ForAll(subformula.quantifier_vars, Not(subformula.arg(0)))
+        case _:
+            args = (push_negations_inside(arg) for arg in formula.args())
+            create_node(formula.node_type(), args, formula._content.payload) 
 
