@@ -5,10 +5,10 @@ import pysmt.operators as operators
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.formula import ExtendedFormulaManager
 from RamseyQuantors.operators import MOD_NODE_TYPE
-from typing import Tuple, List, Iterable, Set, cast
+from typing import Tuple, List, Iterable, Set, cast, Dict
 
 from pysmt.operators import EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES
-from pysmt.shortcuts import Int, And, Or, Equals, Plus, get_env
+from pysmt.shortcuts import Int, And, Or, Equals, Plus, Times, get_env
 
 
 def subterm(node: FNode, vars: Iterable[FNode], keep_with: bool) -> FNode:
@@ -44,6 +44,23 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
 
     return tuple(eqs), tuple(ineqs)
     
+
+def reconstruct_from_coeff_map(m: Dict[ExtendedFNode, int], constant: int) -> ExtendedFNode:
+    terms = []
+    for var, coeff in m.items():
+        if coeff == 0:
+            continue
+        # coef 1: just the variable; otherwise multiply
+        terms.append(var if coeff == 1 else Times(Int(coeff), var))
+    if constant != 0:
+        terms.append(Int(constant))
+
+    if not terms:
+        return Int(0)
+    if len(terms) == 1:
+        return terms[0]
+    return Plus(terms)
+
 def restrict_to_bool(values: List[FNode]):
     """Given a list of symbols, return a formula that restricts them to integer 0 or 1"""
     return And([Or(Equals(v, Int(1)), Equals(v, Int(0))) for v in values])

@@ -8,10 +8,11 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import int_inequality_rewriter, push_negations_inside, solve_for
+from RamseyQuantors.simplifications import collect_sum_terms, int_inequality_rewriter, push_negations_inside, solve_for
 
-from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
+from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, reconstruct_from_coeff_map, restrict_to_bool, split_left_right
 
+from time import time
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -106,7 +107,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     x0, x = [], []
     for i in range(o):
         x0.append(Symbol(f"x0_{i}", INT))
-        x.append(Symbol(f"x{i}", INT))
+        x.append(Symbol(f"x_{i}", INT))
 
     # Restrict x != 0 
     x_restriction = Or([NotEquals(x[i], Int(0)) for i in range(o)])
@@ -131,21 +132,35 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         # r x < s y + t z + h
 
-        # Check wich side contains our first variable vector
         left, right = ineq.arg(0), ineq.arg(1)
 
-        terms_with_vars2, _ = collect_subterms_of_var(right, vars2)
+        left_coeff_map, _ = collect_sum_terms(left) # Const must be 0 since we solved
+        right_coeff_map, const = collect_sum_terms(right)
 
-        # TODO: Pull out substitutions, (since the terms are small this will probs not make a huge difference)
-        g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left.substitute(sub_var1_with_x0), p[2*i]), LE(left.substitute(sub_var1_with_x), Int(0))))
+        # terms_with_vars2, _ = collect_subterms_of_var(right, vars2)
+
+        left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
+        left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
+
+        left_coeff_map_with_x0 = { sub_var1_with_x0[var]: coeff for var, coeff in left_coeff_map.items() }
+        left_with_x0_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x0, 0)
+
+        right_coeff_map_with_x0 = { sub_var2_with_x0[var]: coeff for var, coeff in right_coeff_map.items() }
+        right_with_x0_as_var2 = reconstruct_from_coeff_map(right_coeff_map_with_x0, const)
+
+        coeff_with_vars2 = {sub_var2_with_x[var]: coeff  for var, coeff in right_coeff_map.items() if var in vars2}
+        terms_with_vars2_with_x_as_var2 = reconstruct_from_coeff_map(coeff_with_vars2, 0)
+
+
+        g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left_with_x0_as_var1, p[2*i]), LE(left_with_x_as_var1, Int(0))))
         g2 = Or(Equals(omega[2*i+1], Int(1)), 
                 And(
-                    LE(p[2*i+1], right.substitute(sub_var2_with_x0)),
-                    GE(terms_with_vars2.substitute(sub_var1_with_x), Int(0))
+                    LE(p[2*i+1], right_with_x0_as_var2),
+                    GE(terms_with_vars2_with_x_as_var2, Int(0))
                 )
             )
         g3 = Or(Equals(omega[2*i+1], Int(0)),
-                LT(Int(0), terms_with_vars2.substitute(sub_var2_with_x))
+                LT(Int(0), terms_with_vars2_with_x_as_var2)
                 )
 
         gamma.append(And(g1, g2, g3))
