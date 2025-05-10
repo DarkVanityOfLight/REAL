@@ -24,22 +24,23 @@ def isAtom(atom: FNode) -> bool:
     """
     return atom.get_type() == typ.BOOL and (atom.node_type() in operators.IRA_RELATIONS or atom.node_type() == operators.EQUALS)
 
-def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ExtendedFNode]]:
-    """Collect all atoms, as (inequalities, equalities)"""
+def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
+    """Collect all atoms, returning (equalities, inequalities)."""
 
-    eqs = set()
-    ineqs = set()
+    eqs: set[ExtendedFNode] = set()
+    ineqs: set[ExtendedFNode] = set()
 
     stack = [formula]
     while stack:
-        subformula = stack.pop()
-        match subformula.node_type():
-            case op if op == EQUALS:
-                eqs.add(subformula)
-            case op if op == operators.LT:
-                eqs.add(subformula)
+        sub = stack.pop()
+        match sub.node_type():
+            case t if t == EQUALS:
+                eqs.add(sub)
+            case t if t == operators.LT:
+                ineqs.add(sub)
             case _:
-                stack.extend(subformula.args())
+                # non-atom / other connective: dive into its children
+                stack.extend(sub.args())
 
     return tuple(eqs), tuple(ineqs)
     
