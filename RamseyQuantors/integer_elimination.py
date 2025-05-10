@@ -8,7 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_simplifier, push_negations_inside, solve_for, make_as_inequality
+from RamseyQuantors.simplifications import push_negations_inside, solve_for, make_as_inequality
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
 
@@ -69,7 +69,6 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     assert qformula.node_type() == RAMSEY_NODE_TYPE
 
     formula = qformula.arg(0)
-    formula = push_negations_inside(formula)
     formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify()
 
     # TODO: What should happen if an atom appears twice
@@ -183,11 +182,9 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
     assert formula.is_ramsey()
-    print(formula.serialize())
-    f = make_as_inequality(formula) 
-    f = eliminate_integer_existential_quantifiers(f)
-
-    return eliminate_ramsey_int(f)
+    f = eliminate_integer_existential_quantifiers(formula)
+    positive = push_negations_inside(f)
+    return eliminate_ramsey_int(positive)
 
 
 
@@ -201,11 +198,8 @@ if __name__ == "__main__":
 
     x = Symbol("a", INT)
     y = Symbol("b", INT)
-    f = And(Int(2)*y <= x, x >= Int(5))
-    print(f)
-    inp = make_as_inequality(f)
-    print(inp)
-    qf = Ramsey([x], [y], inp)
+    f =  And(LT(Times(Int(2), y), Plus(x, 1)), GT(Plus(x, 1), Int(5))) # And(Int(2)*y <= x, x >= Int(5))
+    qf = Ramsey([x], [y], f)
     print(qf)
 
 
