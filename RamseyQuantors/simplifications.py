@@ -144,10 +144,11 @@ def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
 
 
 
-def push_negations_inside(formula: FNode):
+def push_negations_inside(formula: ExtendedFNode) -> ExtendedFNode:
     """Takes in a formula,
     and returns an equivalent formula with all negations pushed down onto the atoms.
     """
+
     if isAtom(formula):
         return formula
     
@@ -187,7 +188,9 @@ def push_negations_inside(formula: FNode):
                     return Exists(subformula.quantifier_vars, Not(subformula.arg(0)))
                 case op if op == EXISTS:
                     return ForAll(subformula.quantifier_vars, Not(subformula.arg(0)))
+            raise Exception(f"Unsupported node type {formula.node_type()}")
+
         case _:
             args = (push_negations_inside(arg) for arg in formula.args())
-            create_node(formula.node_type(), args, formula._content.payload) 
+            return create_node(formula.node_type(), args, formula._content.payload) 
 

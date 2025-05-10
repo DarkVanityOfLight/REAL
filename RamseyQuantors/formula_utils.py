@@ -159,6 +159,6 @@ def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
     raise Exception(f"Unhandled node type {formula}")
     
 
-def create_node(node_type, args, payload=None):
+def create_node(node_type, args, payload=None) -> ExtendedFNode:
     mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
     return mngr.create_node(node_type, args, payload)
