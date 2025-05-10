@@ -119,7 +119,9 @@ def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
     def inequality_maker(atom: ExtendedFNode):
         # We only actually eliminate >=
         if atom.node_type() == operators.LE:
-            return LT(formula.arg(0), (formula.arg(1) + 1))
+            return LT(atom.arg(0), (atom.arg(1) + 1))
+        else:
+            return atom
 
     return apply_to_atoms(formula, inequality_maker)
 
@@ -172,6 +174,6 @@ def push_negations_inside(formula: ExtendedFNode) -> ExtendedFNode:
             raise Exception(f"Unsupported node type {formula.node_type()}")
 
         case _:
-            args = (push_negations_inside(arg) for arg in formula.args())
+            args = tuple(push_negations_inside(arg) for arg in formula.args())
             return create_node(formula.node_type(), args, formula._content.payload) 
 

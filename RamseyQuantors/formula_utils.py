@@ -132,7 +132,7 @@ def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
     if isAtom(formula):
         return f(formula)
     else:
-        args = (apply_to_atoms(arg, f) for arg in formula.args())
+        args = tuple(apply_to_atoms(arg, f) for arg in formula.args())
         return create_node(formula.node_type(), args, formula._content.payload) 
 
 def create_node(node_type, args, payload=None) -> ExtendedFNode:
