@@ -8,7 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_simplifier, solve_for, make_as_inequality
+from RamseyQuantors.simplifications import arithmetic_simplifier, push_negations_inside, solve_for, make_as_inequality
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
 
@@ -69,7 +69,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     assert qformula.node_type() == RAMSEY_NODE_TYPE
 
     formula = qformula.arg(0)
-    formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify() # TODO: Move somewhere else and assume the form
+    formula = push_negations_inside(formula)
+    formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify()
 
     # TODO: What should happen if an atom appears twice
     eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
@@ -94,7 +95,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # p[2i] < p[2i+1]  or omega[2i+1] = 1
     # The upper lower bound is smaller then the upper on the atom
     # The upper bound is infinite
-    admissible = And([Or(And(Equals(omega[2*i], Int(0)), LT(p[2*i], p[2*i+1])), Equals(omega[2*i+1], Int(1))) for i in range(n)])
+    admissible = And([Or(And(Equals(omega[2*i], Int(0)), LT(p[2*i], p[2*i+1])), Equals(omega[2*i+1], Int(1))) for i in range(m)])
 
 
     # Create symbols for the arithmetic series (x_0 + k x) that contains the clique
@@ -128,7 +129,6 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     gamma = []
     for i, ineq in enumerate(ineqs):
 
-        # TODO: Write a simplify function that brings the formula into this shape
         # r x < s y + t z + h
 
         # Check wich side contains our first variable vector
@@ -140,11 +140,11 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         g2 = Or(Equals(omega[2*i+1], Int(1)), 
                 And(
                     LE(p[2*i+1], right.substitute(sub_var2_with_x0)),
-                    GE(terms_with_vars2.substitute(sub_var1_with_x), Int(0)) if terms_with_vars2 else FALSE()
+                    GE(terms_with_vars2.substitute(sub_var1_with_x), Int(0))
                 )
             )
         g3 = Or(Equals(omega[2*i+1], Int(0)),
-                LT(Int(0), terms_with_vars2.substitute(sub_var2_with_x)) if terms_with_vars2 else FALSE()
+                LT(Int(0), terms_with_vars2.substitute(sub_var2_with_x))
                 )
 
         gamma.append(And(g1, g2, g3))
@@ -178,8 +178,19 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     result = And(restrictions, prop_skeleton, admissible)
     result =  And(result, And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(n+m)]))
 
-    return Exists(qs+p+omega, result)
+    return Exists(qs+p+omega+x+x0, result)
     
+
+def full_ramsey_elimination_int(formula: ExtendedFNode):
+    assert formula.is_ramsey()
+    print(formula.serialize())
+    f = make_as_inequality(formula) 
+    f = eliminate_integer_existential_quantifiers(f)
+
+    return eliminate_ramsey_int(f)
+
+
+
 
 if __name__ == "__main__":
     from RamseyQuantors.environment import push_ramsey
