@@ -4,12 +4,11 @@ import pysmt.operators as operators
 
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.formula import ExtendedFormulaManager
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
-from RamseyQuantors.shortcuts import Ramsey
-from typing import Tuple, List, Iterable, Set, Optional, cast
+from RamseyQuantors.operators import MOD_NODE_TYPE
+from typing import Tuple, List, Iterable, Set, cast
 
-from pysmt.operators import AND, OR, IFF, IMPLIES, NOT, EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES, EXISTS, FORALL
-from pysmt.shortcuts import Int, And, Or, Equals, Plus, Not, Iff, Implies, Exists, ForAll, get_env
+from pysmt.operators import EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES
+from pysmt.shortcuts import Int, And, Or, Equals, Plus, get_env
 
 
 def subterm(node: FNode, vars: Iterable[FNode], keep_with: bool) -> FNode:
@@ -25,25 +24,22 @@ def isAtom(atom: FNode) -> bool:
     """
     return atom.get_type() == typ.BOOL and (atom.node_type() in operators.IRA_RELATIONS or atom.node_type() == operators.EQUALS)
 
-# TODO: Find a good way to merge with the initial simplification
 def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ExtendedFNode]]:
     """Collect all atoms, as (inequalities, equalities)"""
-    eqs = []
-    ineqs = []
+
+    eqs = set()
+    ineqs = set()
 
     stack = [formula]
     while stack:
         subformula = stack.pop()
         match subformula.node_type():
-            case op if op in {AND, OR, IFF, IMPLIES, NOT}:
-                for arg in subformula.args():
-                    stack.append(arg)
             case op if op == EQUALS:
-                eqs.append(subformula)
+                eqs.add(subformula)
             case op if op == operators.LT:
-                ineqs.append(subformula)
+                eqs.add(subformula)
             case _:
-                print(f"Did not handle {subformula} when collecting atoms.")
+                stack.extend(subformula.args())
 
     return tuple(eqs), tuple(ineqs)
     
@@ -133,31 +129,11 @@ def collect_subterms_of_var(
 
 def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
     """ Walk over the formula, preserve its logical structure and apply f to the atoms"""
-
     if isAtom(formula):
-        
         return f(formula)
-    
-    match formula.node_type():
-        case op if op == AND:
-           return And([apply_to_atoms(subformula, f) for subformula in formula.args()]) 
-        case op if op == OR:
-           return And([apply_to_atoms(subformula, f) for subformula in formula.args()]) 
-        case op if op == NOT:
-            return Not(apply_to_atoms(formula.arg(0), f))
-        case op if op == IFF:
-            return Iff(apply_to_atoms(formula.arg(0), f), apply_to_atoms(formula.arg(1), f))
-        case op if op == IMPLIES:
-            return Implies(apply_to_atoms(formula.arg(0), f), apply_to_atoms(formula.arg(1), f))
-        case op if op == EXISTS:
-            return Exists(formula.quantifier_vars(), apply_to_atoms(formula.arg(0), f))
-        case op if op == FORALL:
-            return ForAll(formula.quantifier_vars(), apply_to_atoms(formula.arg(0), f))
-        case op if op == RAMSEY_NODE_TYPE:
-            return Ramsey(formula.quantifier_vars()[0], formula.quantifier_vars()[1], apply_to_atoms(formula.arg(0), f))
-    
-    raise Exception(f"Unhandled node type {formula}")
-    
+    else:
+        args = (apply_to_atoms(arg, f) for arg in formula.args())
+        return create_node(formula.node_type(), args, formula._content.payload) 
 
 def create_node(node_type, args, payload=None) -> ExtendedFNode:
     mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
