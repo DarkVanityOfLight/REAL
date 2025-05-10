@@ -1,6 +1,6 @@
 from pysmt.fnode import FNode
 from pysmt.operators import EQUALS
-from pysmt.shortcuts import FALSE, LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
+from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
 from pysmt.typing import INT
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
@@ -8,7 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import push_negations_inside, solve_for, make_as_inequality
+from RamseyQuantors.simplifications import int_inequality_rewriter, push_negations_inside, solve_for
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, restrict_to_bool, split_left_right
 
@@ -69,9 +69,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     assert qformula.node_type() == RAMSEY_NODE_TYPE
 
     formula = qformula.arg(0)
+
+    # TODO: Merge this with collecting the atoms
     formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify()
 
-    # TODO: What should happen if an atom appears twice
     eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
     n, m = len(eqs), len(ineqs)
 
@@ -98,7 +99,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 
     # Create symbols for the arithmetic series (x_0 + k x) that contains the clique
-    vars1, vars2 = qformula._content.payload
+    vars1, vars2 = qformula.quantifier_vars()
 
     o = len(vars1)
 
@@ -131,10 +132,11 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         # r x < s y + t z + h
 
         # Check wich side contains our first variable vector
-        left, right = split_left_right(ineq, vars1)
+        left, right = ineq.arg(0), ineq.arg(1)
 
-        terms_with_vars2, terms_without_vars2 = collect_subterms_of_var(right, vars2)
+        terms_with_vars2, _ = collect_subterms_of_var(right, vars2)
 
+        # TODO: Pull out substitutions, (since the terms are small this will probs not make a huge difference)
         g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left.substitute(sub_var1_with_x0), p[2*i]), LE(left.substitute(sub_var1_with_x), Int(0))))
         g2 = Or(Equals(omega[2*i+1], Int(1)), 
                 And(
@@ -149,6 +151,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         gamma.append(And(g1, g2, g3))
 
 
+    # TODO: Handle equality without mods directly
     sub_var2_with_sum = {vars2[i] : Plus(x0[i], x[i]) for i in range(o)}
     for i, eq in enumerate(eqs):
         assert eq.node_type() == EQUALS
@@ -182,9 +185,13 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
     assert formula.is_ramsey()
-    f = eliminate_integer_existential_quantifiers(formula)
-    positive = push_negations_inside(f)
-    return eliminate_ramsey_int(positive)
+    f = int_inequality_rewriter(formula) # Doesn't change formula size
+    f = push_negations_inside(f) # Only introduces new terms for !=, so will produce a small formula
+
+    # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
+    f = eliminate_integer_existential_quantifiers(f) 
+
+    return eliminate_ramsey_int(f)
 
 
 
@@ -200,10 +207,9 @@ if __name__ == "__main__":
     y = Symbol("b", INT)
     f =  And(LT(Times(Int(2), y), Plus(x, 1)), GT(Plus(x, 1), Int(5))) # And(Int(2)*y <= x, x >= Int(5))
     qf = Ramsey([x], [y], f)
-    print(qf)
 
+    print(full_ramsey_elimination_int(qf).serialize())
 
-    print(eliminate_ramsey_int(qf).serialize())
 
 
 
