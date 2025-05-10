@@ -105,42 +105,17 @@ def arithmetic_simplifier(term: ExtendedFNode) -> ExtendedFNode:
     return Plus([Times(Int(coeff), var) for var, coeff in filtered_terms] + [Int(constant)])
 
 
-def make_as_inequality(formula: ExtendedFNode) -> ExtendedFNode:
+def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
     """
-    Take in a formula of the form term ~ term with ~ in {<, >, <=, >=, =} 
-    or (term) % e = (term) % e
-
-    Return an equivalent formula using only <, > and term %e = term %e
+    Rewrite x <= y to x < y +1, this equivalenz only holds for the integer case.
     """
 
-    match formula.node_type():
-        # If we have a logical connective pass it through
-        case op if op == AND:
-           return And([make_as_inequality(cast(ExtendedFNode, subformula)) for subformula in formula.args()])
-        case op if op == OR:
-           return Or([make_as_inequality(cast(ExtendedFNode, subformula)) for subformula in formula.args()])
-        case op if op == NOT:
-            return Not(make_as_inequality(formula.arg(0)))
+    def inequality_maker(atom: ExtendedFNode):
+        # We only actually eliminate >=
+        if atom.node_type() == operators.LE:
+            return LT(formula.arg(0), (formula.arg(1) + 1))
 
-        # If we have equality or non strict inequalities, eliminate
-        case op if op == EQUALS: # != is eliminated when parsing
-            if any([subformula.node_type() == MOD_NODE_TYPE for subformula in formula.args()]): return formula
-
-            # a = b <==>
-            # a <= b => a < b+1
-            # b <= a => b < a + 1
-            return And(formula.arg(0) < (formula.arg(1) + 1), formula.arg(1) < (formula.arg(0) + 1))
-
-        case op if op == operators.LE: # GE is eliminated when parsing
-            return formula.arg(0) < (formula.arg(1) + 1)
-
-        case op if op == operators.EXISTS:
-            return Exists(formula.quantifier_vars(), make_as_inequality(formula.arg(0)))
-        case op if op == RAMSEY_NODE_TYPE:
-            vv1, vv2 = formula.quantifier_vars()
-            return Ramsey(vv1, vv2, make_as_inequality(formula.arg(0)))
-
-    return formula
+    return apply_to_atoms(formula, inequality_maker)
 
 
 
