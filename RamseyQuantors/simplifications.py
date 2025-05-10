@@ -1,35 +1,41 @@
 from pysmt.fnode import FNode
 from pysmt.operators import AND, EXISTS, FORALL, OR, EQUALS, PLUS, NOT, IMPLIES, IFF, TIMES, MINUS
 import pysmt.operators as operators
-from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Minus, Exists, Plus, Times, Not, Int, get_env
-from RamseyQuantors.shortcuts import Ramsey
+from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Minus, Exists, Plus, Times, Not, Int
 from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.operators import RAMSEY_NODE_TYPE, MOD_NODE_TYPE
 from typing import Iterable, Tuple, cast, Dict
 from RamseyQuantors.formula_utils import create_node, subterm, isAtom, apply_to_atoms
 
-
 def solve_for(f: FNode, vars: Iterable[FNode]) -> FNode:
     """
-    Solve formula f, such that all vars stand on one side of the (in) equality with their coefficients
-    Assume formula is already a sum of products
+    Solve formula f such that all variables in 'vars' are moved to the left side of the (in)equality.
+    Assumes the formula is already a sum of products.
     """
 
+    # FIXME: will probably die on mod
     def solve(atom: ExtendedFNode):
+        # Determine the original operator
+        op = atom.node_type()
         left, right = atom.arg(0), atom.arg(1)
 
+        # Split left into variable terms (Lw) and non-variable terms (Lo)
         Lw = subterm(left, vars, True)
-        #Lo = subterm(left_s, vars, False)
-        #Rw = subterm(right_s,vars, True)
+        Lo = subterm(left, vars, False)
 
+        # Split right into variable terms (Rw) and non-variable terms (Ro)
+        Rw = subterm(right, vars, True)
         Ro = subterm(right, vars, False)
-        # rebuild “normalized” inequality
 
-        return LT(arithmetic_simplifier(Minus(Minus(left, Lw), Ro)), arithmetic_simplifier(Minus(Minus(right, Lw), Ro))).simplify()
+        # Compute new_left and new_right
+        new_left = arithmetic_simplifier(Minus(Lw, Rw))
+        new_right = arithmetic_simplifier(Minus(Ro, Lo))
 
+        # Create the new atom with the original operator
+        new_atom = create_node(op, (new_left, new_right))
+
+        return new_atom.simplify()
 
     return apply_to_atoms(cast(ExtendedFNode, f), solve)
-
 
 
 
