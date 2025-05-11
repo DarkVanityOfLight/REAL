@@ -48,8 +48,7 @@ def eliminate_integer_existential_quantifiers(formula: ExtendedFNode) -> Extende
     substituted_formula = subformula.substitute(substitution_map)
 
     # Get the current variables bound originally by the ramsey quantifier
-    x : Tuple[FNode, ...] = formula._content.payload[0]
-    y : Tuple[FNode, ...] = formula._content.payload[1]
+    x, y = formula.quantifier_vars()
 
     # Add the newly introduced variables
     new_x =  x + v1 + v2
