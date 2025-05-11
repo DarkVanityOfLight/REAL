@@ -33,7 +33,7 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
 
     # Move all variables without vars to the right
     new_right = {}
-    for k, v in Ro:
+    for k, v in Ro.items():
         new_right[k] = v - Lo.pop(k, 0)
 
     new_right = new_right | Lo

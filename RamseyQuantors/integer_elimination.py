@@ -8,7 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import collect_sum_terms, int_inequality_rewriter, push_negations_inside, solve_for
+from RamseyQuantors.simplifications import arithmetic_solver, collect_sum_terms, int_inequality_rewriter, push_negations_inside, solve_for
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, reconstruct_from_coeff_map, restrict_to_bool, split_left_right
 
@@ -70,9 +70,6 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     formula = qformula.arg(0)
 
-    # TODO: Merge this with collecting the atoms
-    formula = solve_for(formula, qformula.quantifier_vars()[0]).simplify()
-
     eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
     n, m = len(eqs), len(ineqs)
 
@@ -133,10 +130,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         left, right = ineq.arg(0), ineq.arg(1)
 
-        left_coeff_map, _ = collect_sum_terms(left) # Const must be 0 since we solved
-        right_coeff_map, const = collect_sum_terms(right)
+        left_coeff_map, left_const = collect_sum_terms(left)
+        right_coeff_map, right_const = collect_sum_terms(right)
 
-        # terms_with_vars2, _ = collect_subterms_of_var(right, vars2)
+        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, vars1)
 
         left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
         left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
