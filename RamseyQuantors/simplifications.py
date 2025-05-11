@@ -3,8 +3,44 @@ from pysmt.operators import AND, EXISTS, FORALL, OR, EQUALS, PLUS, NOT, IMPLIES,
 import pysmt.operators as operators
 from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Minus, Exists, Plus, Times, Not, Int
 from RamseyQuantors.fnode import ExtendedFNode
-from typing import Iterable, Tuple, cast, Dict
+from typing import Iterable, Tuple, cast, Dict, Set
 from RamseyQuantors.formula_utils import create_node, subterm, isAtom, apply_to_atoms
+
+type SumOfTerms = Dict[ExtendedFNode, int]
+
+def arithmetic_solver(left: SumOfTerms, left_const: int,
+                      right:SumOfTerms, right_const: int,
+                      vars: Set[ExtendedFNode]) -> Tuple[SumOfTerms, SumOfTerms, int]:
+    """
+    Solve an sum of products for a list of variables.
+    Returns the left side only containing vars and their coefficients,
+    and the right side with vars, coefficients and a constant integer part.
+    """
+
+    # TODO: Make each as one iteration
+    Lw = {k: v for k, v in left.items() if k in vars}
+    Lo = {k: v for k, v in left.items() if k not in vars}
+
+    Rw = {k: v for k, v in right.items() if k in vars}
+    Ro = {k: v for k, v in right.items() if k not in vars}
+
+    # Move all variables with vars to the left
+    new_left = {}
+    for k, v in Lw.items():
+        new_left[k] = v - Rw.pop(k, 0)
+
+    new_left = new_left | Rw
+
+    # Move all variables without vars to the right
+    new_right = {}
+    for k, v in Ro:
+        new_right[k] = v - Lo.pop(k, 0)
+
+    new_right = new_right | Lo
+
+    const = right_const - left_const
+
+    return (new_left, new_right, const)
 
 def solve_for(f: FNode, vars: Iterable[FNode]) -> FNode:
     """
