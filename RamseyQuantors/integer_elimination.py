@@ -1,7 +1,7 @@
 from pysmt.fnode import FNode
 from pysmt.operators import EQUALS
 from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
-from pysmt.typing import INT
+from pysmt.typing import INT, BOOL
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
@@ -70,7 +70,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     formula = qformula.arg(0)
 
     # ============================
-    #Collect atoms
+    # Collect atoms
     # ============================
     eqs, modeqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
     l, n, m = len(eqs), len(modeqs), len(ineqs)
@@ -78,19 +78,17 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Boolean abstraction
     # ============================
-    qs = [Symbol(f"q_{i}", INT) for i in range(l + n + m)]
-    q_restriction = restrict_to_bool(qs)
+    qs = [Symbol(f"q_{i}", BOOL) for i in range(l + n + m)]
 
     prop_skeleton = formula.substitute({
-        atom: Equals(qs[i], Int(1))
+        atom: qs[i]
         for i, atom in enumerate(eqs + modeqs + ineqs)
     })
 
     # ============================
     # Profile constraints
     # ============================
-    p, omega = [Symbol(f"p_{i}", INT) for i in range(2*m)], [Symbol(f"o_{i}", INT) for i in range(2*m)]
-    omega_restriction = restrict_to_bool(omega)
+    p, omega = [Symbol(f"p_{i}", INT) for i in range(2*m)], [Symbol(f"o_{i}", BOOL) for i in range(2*m)]
 
     admissible = And([
         Or(
@@ -182,12 +180,12 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Step 8: Final assembly
     # ============================
-    restrictions = And(q_restriction, x_restriction, omega_restriction)
-    guarded_gamma = And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(l + n + m)])
+    restrictions = x_restriction
+    guarded_gamma = And([Or(Not(qs[i]), gamma[i]) for i in range(l + n + m)])
 
     result = And(restrictions, prop_skeleton, admissible, guarded_gamma)
 
-    return Exists(qs + p + omega + x + x0, result)
+    return Exists(omega + qs, Exists(p + x + x0, result))
     
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
