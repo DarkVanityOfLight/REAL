@@ -62,172 +62,132 @@ def eliminate_integer_existential_quantifiers(formula: ExtendedFNode) -> Extende
 
 def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     """
-    Take in a formula of the for (ramsey x y phi), assuming that phi is quantifier free and w-simple
-    Return an equivalent formula without the ramsey quantifier
+    Eliminate the (ramsey x y phi) quantifier from a formula.
+    Assumes phi is quantifier-free and w-simple.
+    Returns an equivalent formula without the Ramsey quantifier.
     """
     assert qformula.node_type() == RAMSEY_NODE_TYPE
-
     formula = qformula.arg(0)
 
+    # ============================
+    #Collect atoms
+    # ============================
     eqs, modeqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
     l, n, m = len(eqs), len(modeqs), len(ineqs)
 
-    # Introduce new symbols to guess which atoms should be satisfied
+    # ============================
+    # Boolean abstraction
+    # ============================
     qs = [Symbol(f"q_{i}", INT) for i in range(l + n + m)]
     q_restriction = restrict_to_bool(qs)
 
-    # Build the propositional skeleton by substituting all atoms with their corresponding q
-    prop_skeleton = formula.substitute({atom: Equals(qs[i], Int(1)) for i, atom in enumerate(eqs + modeqs + ineqs)})
+    prop_skeleton = formula.substitute({
+        atom: Equals(qs[i], Int(1))
+        for i, atom in enumerate(eqs + modeqs + ineqs)
+    })
 
-
-    # ============ Inequality elimination ============
-    # Define the limits for each term in the atoms(aka. the profile of the clique)
-    p, omega = [], []
-    for i in range(2*m):
-        p.append(Symbol(f"p_{i}", INT))
-        omega.append(Symbol(f"o_{i}", INT))
-
+    # ============================
+    # Profile constraints
+    # ============================
+    p, omega = [Symbol(f"p_{i}", INT) for i in range(2*m)], [Symbol(f"o_{i}", INT) for i in range(2*m)]
     omega_restriction = restrict_to_bool(omega)
 
-    # Ensure the profile is admissible that is either 
-    # p[2i] < p[2i+1]  or omega[2i+1] = 1
-    # The upper lower bound is smaller then the upper on the atom
-    # The upper bound is infinite
-    admissible = And([Or(And(Equals(omega[2*i], Int(0)), LT(p[2*i], p[2*i+1])), Equals(omega[2*i+1], Int(1))) for i in range(m)])
+    admissible = And([
+        Or(
+            And(Equals(omega[2*i], Int(0)), LT(p[2*i], p[2*i+1])),
+            Equals(omega[2*i+1], Int(1))
+        )
+        for i in range(m)
+    ])
 
-
-    # Create symbols for the arithmetic series (x_0 + k x) that contains the clique
+    # ============================
+    # Parametrize variables
+    # ============================
     vars1, vars2 = cast(Tuple[Tuple[ExtendedFNode], Tuple[ExtendedFNode]], qformula.quantifier_vars())
-
     o = len(vars1)
 
-    x0, x = [], []
-    for i in range(o):
-        x0.append(Symbol(f"x0_{i}", INT))
-        x.append(Symbol(f"x_{i}", INT))
-
-    # Restrict x != 0 
+    x0 = [Symbol(f"x0_{i}", INT) for i in range(o)]
+    x = [Symbol(f"x_{i}", INT) for i in range(o)]
     x_restriction = Or([NotEquals(x[i], Int(0)) for i in range(o)])
 
-    # Prepare subsitution maps
-    sub_var1_with_x0 = {}
-    sub_var2_with_x0 = {}
-    sub_var1_with_x = {}
-    sub_var2_with_x = {}
-    
-    for i in range(o):
-        sub_var1_with_x0[vars1[i]] = x0[i]
-        sub_var2_with_x0[vars2[i]] = x0[i]
+    sub_var1_with_x0 = {vars1[i]: x0[i] for i in range(o)}
+    sub_var2_with_x0 = {vars2[i]: x0[i] for i in range(o)}
+    sub_var1_with_x  = {vars1[i]: x[i] for i in range(o)}
+    sub_var2_with_x  = {vars2[i]: x[i] for i in range(o)}
 
-        sub_var1_with_x[vars1[i]] = x[i]
-        sub_var2_with_x[vars2[i]] = x[i]
-
-
-    # Construct gamma
+    # ============================
+    # Handle inequalities
+    # ============================
     gamma = []
+
     for i, ineq in enumerate(ineqs):
-
-        # r x < s y + t z + h
-
         left, right = ineq.arg(0), ineq.arg(1)
+        l_coeffs, l_const = collect_sum_terms(left)
+        r_coeffs, r_const = collect_sum_terms(right)
 
-        left_coeff_map, left_const = collect_sum_terms(left)
-        right_coeff_map, right_const = collect_sum_terms(right)
+        l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, set(vars1))
+        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0)
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0)
+        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v]: c for v, c in r_coeffs.items()}, const)
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0)
 
-        left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
-        left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
-
-        left_coeff_map_with_x0 = { sub_var1_with_x0[var]: coeff for var, coeff in left_coeff_map.items() }
-        left_with_x0_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x0, 0)
-
-        right_coeff_map_with_x0 = { sub_var2_with_x0[var]: coeff for var, coeff in right_coeff_map.items() }
-        right_with_x0_as_var2 = reconstruct_from_coeff_map(right_coeff_map_with_x0, const)
-
-        coeff_with_vars2 = {sub_var2_with_x[var]: coeff  for var, coeff in right_coeff_map.items() if var in vars2}
-        terms_with_vars2_with_x_as_var2 = reconstruct_from_coeff_map(coeff_with_vars2, 0)
-
-
-        g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left_with_x0_as_var1, p[2*i]), LE(left_with_x_as_var1, Int(0))))
-        g2 = Or(Equals(omega[2*i+1], Int(1)), 
-                And(
-                    LE(p[2*i+1], right_with_x0_as_var2),
-                    GE(terms_with_vars2_with_x_as_var2, Int(0))
-                )
-            )
-        g3 = Or(Equals(omega[2*i+1], Int(0)),
-                LT(Int(0), terms_with_vars2_with_x_as_var2)
-                )
+        g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
+        g2 = Or(Equals(omega[2*i+1], Int(1)), And(LE(p[2*i+1], right_x0), GE(right_x, Int(0))))
+        g3 = Or(Equals(omega[2*i+1], Int(0)), LT(Int(0), right_x))
 
         gamma.append(And(g1, g2, g3))
 
+    # ============================
+    # Handle mod equalities
+    # ============================
+    sub_var2_with_sum = {vars2[i]: Plus(x0[i], x[i]) for i in range(o)}
 
-    # ============ Mod equality elimination ============
-
-    # TODO: Think of a way of solving the mod constraints
-    sub_var2_with_sum = {vars2[i] : Plus(x0[i], x[i]) for i in range(o)}
     for i, eq in enumerate(modeqs):
-        assert eq.node_type() == EQUALS
-        assert eq.arg(0).node_type() == MOD_NODE_TYPE
+        assert eq.node_type() == EQUALS and eq.arg(0).node_type() == MOD_NODE_TYPE
 
         left, right = split_left_right(eq, vars1)
-
-        # splitting assures that left is the left hand side in the equation below
-        #eq: u*vars1 % e == v*vars2 + wz + d % e
-
-        # u x0 % e == v (x0 + x) + wz + d % e
-        g1 = eq.substitute(sub_var1_with_x0 | sub_var2_with_sum)
-
-        # ux % e = 0
+        g1 = eq.substitute({**sub_var1_with_x0, **sub_var2_with_sum})
         g2 = Equals(left.substitute(sub_var1_with_x), 0)
-
-        # vx % e = 0
-        vx : FNode = Plus(collect_subterms_of_var(right, vars2)[0])
-        mod_div = eq.arg(0).arg(1)
-        g3 = Equals(Mod(vx.substitute(sub_var2_with_x), mod_div), 0)
+        vx = Plus(collect_subterms_of_var(right, vars2)[0])
+        g3 = Equals(Mod(vx.substitute(sub_var2_with_x), eq.arg(0).arg(1)), 0)
 
         gamma.append(And(g1, g2, g3))
 
-    # ============ Mod equality elimination ============
+    # ============================
+    # Handle equalities
+    # ============================
     for i, eq in enumerate(eqs):
+
         # rx = sy + tz + h
+
         left, right = eq.arg(0), eq.arg(1)
+        l_coeffs, l_const = collect_sum_terms(left)
+        r_coeffs, r_const = collect_sum_terms(right)
 
-        left_coeff_map, left_const = collect_sum_terms(left)
-        right_coeff_map, right_const = collect_sum_terms(right)
+        l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, set(vars1))
+        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # vx
 
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
+        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v]: c for v, c in r_coeffs.items()}, 0) # s x0 + tz + h
 
-        # rx = 0
-        left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
-        left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
+        gamma.append(And(
+            Equals(left_x, Int(0)), # rx = 0
+            Equals(right_x, Int(0)), # vx = 0
+            Equals(left_x0, right_x0) # r x_0 = s x0 + tz + h
+        ))
 
-        g1 = Equals(left_with_x_as_var1, Int(0))
-
-        # sx = 0
-        coeff_with_vars2 = {sub_var2_with_x[var]: coeff  for var, coeff in right_coeff_map.items() if var in vars2}
-        terms_with_vars2_with_x_as_var2 = reconstruct_from_coeff_map(coeff_with_vars2, 0)
-        g2 = Equals(terms_with_vars2_with_x_as_var2, Int(0))
-
-        # rx_0 = sx_0 + tz + h
-        left_coeff_map_with_x0 = { sub_var1_with_x0[var]: coeff for var, coeff in left_coeff_map.items() }
-        left_with_x0_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x0, 0)
-
-        right_coeff_map_with_x0 = { sub_var2_with_x0[var]: coeff for var, coeff in right_coeff_map.items() }
-        right_with_x0_as_var2 = reconstruct_from_coeff_map(right_coeff_map_with_x0, 0)
-        
-        g3 = Equals(left_with_x0_as_var1, right_with_x0_as_var2)
-
-        gamma.append(And(g1, g2, g3))
-
-
+    # ============================
+    # Step 8: Final assembly
+    # ============================
     restrictions = And(q_restriction, x_restriction, omega_restriction)
-    result = And(restrictions, prop_skeleton, admissible)
-    result =  And(result, And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(l+n+m)]))
+    guarded_gamma = And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(l + n + m)])
 
-    return Exists(qs+p+omega+x+x0, result)
+    result = And(restrictions, prop_skeleton, admissible, guarded_gamma)
+
+    return Exists(qs + p + omega + x + x0, result)
     
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
