@@ -1,10 +1,9 @@
-from pysmt.fnode import FNode
 from pysmt.operators import AND, EXISTS, FORALL, OR, EQUALS, PLUS, NOT, IMPLIES, IFF, TIMES, MINUS
 import pysmt.operators as operators
-from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Minus, Exists, Plus, Times, Not, Int
+from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Exists, Times, Not, Int
 from RamseyQuantors.fnode import ExtendedFNode
-from typing import Iterable, Tuple, cast, Dict, Set
-from RamseyQuantors.formula_utils import create_node, subterm, isAtom, apply_to_atoms
+from typing import Tuple, Dict, Set
+from RamseyQuantors.formula_utils import create_node, isAtom, apply_to_atoms
 
 type SumOfTerms = Dict[ExtendedFNode, int]
 
@@ -50,39 +49,6 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
     const = right_const - left_const
 
     return (new_left, new_right, const)
-
-def solve_for(f: FNode, vars: Iterable[FNode]) -> FNode:
-    """
-    Solve formula f such that all variables in 'vars' are moved to the left side of the (in)equality.
-    Assumes the formula is already a sum of products.
-    """
-
-    # FIXME: will probably die on mod
-    def solve(atom: ExtendedFNode):
-        # Determine the original operator
-        op = atom.node_type()
-        left, right = atom.arg(0), atom.arg(1)
-
-        # Split left into variable terms (Lw) and non-variable terms (Lo)
-        Lw = subterm(left, vars, True)
-        Lo = subterm(left, vars, False)
-
-        # Split right into variable terms (Rw) and non-variable terms (Ro)
-        Rw = subterm(right, vars, True)
-        Ro = subterm(right, vars, False)
-
-        # Compute new_left and new_right
-        new_left = arithmetic_simplifier(Minus(Lw, Rw))
-        new_right = arithmetic_simplifier(Minus(Ro, Lo))
-
-        # Create the new atom with the original operator
-        new_atom = create_node(op, (new_left, new_right))
-
-        return new_atom.simplify()
-
-    return apply_to_atoms(cast(ExtendedFNode, f), solve)
-
-
 
 def collect_sum_terms(
     term: ExtendedFNode
@@ -147,15 +113,6 @@ def collect_sum_terms(
     recurse(term, 1)
     return coefficients, constant_term
 
-        
-def arithmetic_simplifier(term: ExtendedFNode) -> ExtendedFNode:
-    """ Simplifies sums of terms, eg. a - b - a => -b """
-    terms, constant = collect_sum_terms(term)
-    filtered_terms = filter(lambda item: item[1] != 0, terms.items())
-
-    return Plus([Times(Int(coeff), var) for var, coeff in filtered_terms] + [Int(constant)])
-
-
 def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
     """
     Rewrite x <= y to x < y +1, this equivalenz only holds for the integer case.
@@ -169,7 +126,6 @@ def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
             return atom
 
     return apply_to_atoms(formula, inequality_maker)
-
 
 
 def push_negations_inside(formula: ExtendedFNode) -> ExtendedFNode:

@@ -1,4 +1,3 @@
-from pysmt.fnode import FNode
 from pysmt.operators import EQUALS
 from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
 from pysmt.typing import INT, BOOL
@@ -8,9 +7,9 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_solver, collect_sum_terms, int_inequality_rewriter, push_negations_inside, solve_for
+from RamseyQuantors.simplifications import arithmetic_solver, collect_sum_terms, int_inequality_rewriter, push_negations_inside
 
-from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, reconstruct_from_coeff_map, restrict_to_bool, split_left_right
+from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, reconstruct_from_coeff_map, split_left_right
 
 
 
@@ -63,7 +62,6 @@ def eliminate_integer_existential_quantifiers(formula: ExtendedFNode) -> Extende
 def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     """
     Eliminate the (ramsey x y phi) quantifier from a formula.
-    Assumes phi is quantifier-free and w-simple.
     Returns an equivalent formula without the Ramsey quantifier.
     """
     assert qformula.node_type() == RAMSEY_NODE_TYPE

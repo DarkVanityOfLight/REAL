@@ -8,14 +8,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE
 from typing import Tuple, List, Iterable, Set, cast, Dict
 
 from pysmt.operators import EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES
-from pysmt.shortcuts import Int, And, Or, Equals, Plus, Times, get_env
-
-
-def subterm(node: FNode, vars: Iterable[FNode], keep_with: bool) -> FNode:
-    """Helper: extract the sum of (multi)terms that do (or don’t) contain any of `vars`."""
-    with_terms, without_terms = collect_subterms_of_var(node, vars)
-    return with_terms if keep_with else without_terms
-
+from pysmt.shortcuts import Int, Plus, Times, get_env
 
 def isAtom(atom: FNode) -> bool:
     """
@@ -65,10 +58,6 @@ def reconstruct_from_coeff_map(m: Dict[ExtendedFNode, int], constant: int) -> Ex
     if len(terms) == 1:
         return terms[0]
     return Plus(terms)
-
-def restrict_to_bool(values: List[FNode]):
-    """Given a list of symbols, return a formula that restricts them to integer 0 or 1"""
-    return And([Or(Equals(v, Int(1)), Equals(v, Int(0))) for v in values])
 
 def split_left_right(atom: FNode, vars1: Iterable[FNode]) -> Tuple[FNode, FNode]:
     """
