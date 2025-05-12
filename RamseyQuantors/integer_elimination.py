@@ -1,10 +1,10 @@
-from pysmt.operators import EQUALS
+from pysmt.operators import EQUALS, NOT
 from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
 from pysmt.typing import INT, BOOL
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
-from typing import Dict, Tuple, cast
+from typing import Dict, Tuple, cast, Optional
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
 from RamseyQuantors.simplifications import arithmetic_solver, collect_sum_terms, int_inequality_rewriter, push_negations_inside
@@ -137,16 +137,67 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Handle mod equalities
     # ============================
-    sub_var2_with_sum = {vars2[i]: Plus(x0[i], x[i]) for i in range(o)}
-
     for i, eq in enumerate(modeqs):
-        assert eq.node_type() == EQUALS and eq.arg(0).node_type() == MOD_NODE_TYPE
+        assert eq.node_type() == EQUALS or (eq.node_type() == NOT and eq.arg(0).node_type() == EQUALS)
 
-        left, right = split_left_right(eq, vars1)
-        g1 = eq.substitute({**sub_var1_with_x0, **sub_var2_with_sum})
-        g2 = Equals(left.substitute(sub_var1_with_x), 0)
-        vx = Plus(collect_subterms_of_var(right, vars2)[0])
-        g3 = Equals(Mod(vx.substitute(sub_var2_with_x), eq.arg(0).arg(1)), 0)
+        # !(ux % e = vy + wz + d % e)
+        # ux % e = vy + wz + d % e
+        is_negated = eq.node_type() == NOT
+        equation = eq if not is_negated else eq.arg(0)
+
+        left_hand_eq: ExtendedFNode = equation.arg(0)
+        right_hand_eq: ExtendedFNode = equation.arg(1)
+
+        # Peel of mod
+        left: ExtendedFNode
+        right: ExtendedFNode
+        mod: Optional[int] = None
+
+        assert left_hand_eq == MOD_NODE_TYPE
+        assert cast(ExtendedFNode, left_hand_eq.arg(1)).is_int_constant()
+
+        mod = cast(ExtendedFNode, left_hand_eq.arg(1)).constant_value()
+        left = left_hand_eq.arg(0)
+
+        assert right_hand_eq == MOD_NODE_TYPE
+        assert cast(ExtendedFNode, right_hand_eq.arg(1)).is_int_constant()
+        assert mod == right_hand_eq.arg(1).constant_value() 
+
+        mod = right_hand_eq.arg(1).constant_value()
+        right = right_hand_eq.arg(0)
+
+        left_coeff_map, right_constant = collect_sum_terms(left)
+        right_coeff_map, left_constant = collect_sum_terms(right)
+
+        l_coeffs, r_coeffs, const = arithmetic_solver(left_coeff_map, left_constant, right_coeff_map, right_constant, set(vars1))
+
+        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0)
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0)
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0)
+
+        #v (x0 + x) + wz
+        combined_r_coeffs: Dict[ExtendedFNode, int] = {}
+        for v, c in r_coeffs.items():
+            if v in vars2:
+                # put both the x0- and the x-versions in the same map
+                combined_r_coeffs[sub_var2_with_x0[v]] = c
+                combined_r_coeffs[sub_var2_with_x[v]]  = c
+            else:
+                # keep all other vars unchanged
+                combined_r_coeffs[v] = c
+        right_x_x0 = reconstruct_from_coeff_map(combined_r_coeffs, const)
+
+        # TODO: Add the not back on
+
+        def negate_if(term):
+            if is_negated:
+                return Not(term)
+            else:
+                return term
+
+        g1 = negate_if(Equals(Mod(left_x0, Int(mod)), Mod(right_x_x0, Int(mod))))# u x0 % e = v (x0 + x) + wz + d % e
+        g2 = Equals(Mod(left_x, Int(mod)), Int(0))# u x % e = 0 % e
+        g3 = Equals(Mod(right_x, Int(mod)), Int(0))# vx %e = 0 % e
 
         gamma.append(And(g1, g2, g3))
 

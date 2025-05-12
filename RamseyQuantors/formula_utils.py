@@ -7,7 +7,7 @@ from RamseyQuantors.formula import ExtendedFormulaManager
 from RamseyQuantors.operators import MOD_NODE_TYPE
 from typing import Tuple, List, Iterable, Set, cast, Dict
 
-from pysmt.operators import EQUALS, SYMBOL, IRA_OPERATORS, PLUS, TIMES
+from pysmt.operators import EQUALS, NOT, SYMBOL, IRA_OPERATORS, PLUS, TIMES
 from pysmt.shortcuts import Int, Plus, Times, get_env
 
 def isAtom(atom: FNode) -> bool:
@@ -36,6 +36,10 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
                     eqs.add(sub)
             case t if t == operators.LT:
                 ineqs.add(sub)
+            case t if t == NOT:
+                # A mod equality can appear negated, since we can not rewrite it
+                # we then treat the whole thing(negation + equation) as the actuall atom
+                modeqs.add(sub)
             case _:
                 # non-atom / other connective: dive into its children
                 stack.extend(sub.args())
