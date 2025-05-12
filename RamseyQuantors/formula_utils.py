@@ -24,10 +24,12 @@ def isAtom(atom: FNode) -> bool:
     """
     return atom.get_type() == typ.BOOL and (atom.node_type() in operators.IRA_RELATIONS or atom.node_type() == operators.EQUALS)
 
-def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
-    """Collect all atoms, returning (equalities, inequalities)."""
+def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
+    """Collect all atoms, returning (equalities, modequalities, inequalities)."""
+
 
     eqs: set[ExtendedFNode] = set()
+    modeqs: set[ExtendedFNode] = set()
     ineqs: set[ExtendedFNode] = set()
 
     stack = [formula]
@@ -35,14 +37,17 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
         sub = stack.pop()
         match sub.node_type():
             case t if t == EQUALS:
-                eqs.add(sub)
+                if sub.arg(0).node_type() == MOD_NODE_TYPE:
+                    modeqs.add(sub)
+                else:
+                    eqs.add(sub)
             case t if t == operators.LT:
                 ineqs.add(sub)
             case _:
                 # non-atom / other connective: dive into its children
                 stack.extend(sub.args())
 
-    return tuple(eqs), tuple(ineqs)
+    return tuple(eqs), tuple(modeqs), tuple(ineqs)
     
 
 def reconstruct_from_coeff_map(m: Dict[ExtendedFNode, int], constant: int) -> ExtendedFNode:
