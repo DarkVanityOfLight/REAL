@@ -17,6 +17,8 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
     and the right side with vars, coefficients and a constant integer part.
     """
 
+    assert isinstance(vars, set) # Sets speed up the process alot so make sure we get a set
+
     Lw, Lo = {}, {}
     for k, v in left.items():
         if k in vars:
