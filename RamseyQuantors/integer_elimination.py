@@ -12,7 +12,6 @@ from RamseyQuantors.simplifications import arithmetic_solver, collect_sum_terms,
 
 from RamseyQuantors.formula_utils import collect_atoms, collect_subterms_of_var, reconstruct_from_coeff_map, restrict_to_bool, split_left_right
 
-from time import time
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -70,16 +69,18 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     formula = qformula.arg(0)
 
-    eqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
-    n, m = len(eqs), len(ineqs)
+    eqs, modeqs, ineqs = collect_atoms(cast(ExtendedFNode, formula))
+    l, n, m = len(eqs), len(modeqs), len(ineqs)
 
     # Introduce new symbols to guess which atoms should be satisfied
-    qs = [Symbol(f"q_{i}", INT) for i in range(len(eqs) + len(ineqs))]
+    qs = [Symbol(f"q_{i}", INT) for i in range(l + n + m)]
     q_restriction = restrict_to_bool(qs)
 
     # Build the propositional skeleton by substituting all atoms with their corresponding q
-    prop_skeleton = formula.substitute({atom: Equals(qs[i], Int(1)) for i, atom in enumerate(eqs + ineqs)})
+    prop_skeleton = formula.substitute({atom: Equals(qs[i], Int(1)) for i, atom in enumerate(eqs + modeqs + ineqs)})
 
+
+    # ============ Inequality elimination ============
     # Define the limits for each term in the atoms(aka. the profile of the clique)
     p, omega = [], []
     for i in range(2*m):
@@ -162,15 +163,17 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         gamma.append(And(g1, g2, g3))
 
 
-    # TODO: Handle equality without mods directly
+    # ============ Mod equality elimination ============
+
+    # TODO: Think of a way of solving the mod constraints
     sub_var2_with_sum = {vars2[i] : Plus(x0[i], x[i]) for i in range(o)}
-    for i, eq in enumerate(eqs):
+    for i, eq in enumerate(modeqs):
         assert eq.node_type() == EQUALS
         assert eq.arg(0).node_type() == MOD_NODE_TYPE
 
         left, right = split_left_right(eq, vars1)
 
-        # spliting assures that left is the left hand side in the equation below
+        # splitting assures that left is the left hand side in the equation below
         #eq: u*vars1 % e == v*vars2 + wz + d % e
 
         # u x0 % e == v (x0 + x) + wz + d % e
@@ -186,10 +189,43 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         gamma.append(And(g1, g2, g3))
 
+    # ============ Mod equality elimination ============
+    for i, eq in enumerate(eqs):
+        # rx = sy + tz + h
+        left, right = eq.arg(0), eq.arg(1)
+
+        left_coeff_map, left_const = collect_sum_terms(left)
+        right_coeff_map, right_const = collect_sum_terms(right)
+
+        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, set(vars1))
+
+
+        # rx = 0
+        left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
+        left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
+
+        g1 = Equals(left_with_x_as_var1, Int(0))
+
+        # sx = 0
+        coeff_with_vars2 = {sub_var2_with_x[var]: coeff  for var, coeff in right_coeff_map.items() if var in vars2}
+        terms_with_vars2_with_x_as_var2 = reconstruct_from_coeff_map(coeff_with_vars2, 0)
+        g2 = Equals(terms_with_vars2_with_x_as_var2, Int(0))
+
+        # rx_0 = sx_0 + tz + h
+        left_coeff_map_with_x0 = { sub_var1_with_x0[var]: coeff for var, coeff in left_coeff_map.items() }
+        left_with_x0_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x0, 0)
+
+        right_coeff_map_with_x0 = { sub_var2_with_x0[var]: coeff for var, coeff in right_coeff_map.items() }
+        right_with_x0_as_var2 = reconstruct_from_coeff_map(right_coeff_map_with_x0, 0)
+        
+        g3 = Equals(left_with_x0_as_var1, right_with_x0_as_var2)
+
+        gamma.append(And(g1, g2, g3))
+
 
     restrictions = And(q_restriction, x_restriction, omega_restriction)
     result = And(restrictions, prop_skeleton, admissible)
-    result =  And(result, And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(n+m)]))
+    result =  And(result, And([Or(Not(Equals(qs[i], Int(1))), gamma[i]) for i in range(l+n+m)]))
 
     return Exists(qs+p+omega+x+x0, result)
     
