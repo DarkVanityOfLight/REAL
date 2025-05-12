@@ -4,6 +4,7 @@ from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Exists, Times, Not, Int
 from RamseyQuantors.fnode import ExtendedFNode
 from typing import Tuple, Dict, Set
 from RamseyQuantors.formula_utils import create_node, isAtom, apply_to_atoms
+from RamseyQuantors.operators import MOD_NODE_TYPE
 
 type SumOfTerms = Dict[ExtendedFNode, int]
 
@@ -150,8 +151,11 @@ def push_negations_inside(formula: ExtendedFNode) -> ExtendedFNode:
                         # ~(x < y) => y <= x
                         return LE(right, left)
                     case op if op == EQUALS:
-                        # ~ (x = y) => x < y \/ y < x
-                        return Or(LT(left, right), GT(left, right))
+                        if left.arg(0).node_type() == MOD_NODE_TYPE or right.arg(0).node_type() == MOD_NODE_TYPE: # Ignore equations with mod
+                            return Not(subformula)
+                        else:
+                            # ~ (x = y) => x < y \/ y < x
+                            return Or(LT(left, right), GT(left, right))
 
             match subformula.node_type():
                 case op if op == NOT:
