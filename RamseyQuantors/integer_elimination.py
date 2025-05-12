@@ -92,8 +92,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     admissible = And([
         Or(
-            And(Equals(omega[2*i], Int(0)), LT(p[2*i], p[2*i+1])),
-            Equals(omega[2*i+1], Int(1))
+            And(Not(omega[2*i]), LT(p[2*i], p[2*i+1])),
+            omega[2*i+1]
         )
         for i in range(m)
     ])
@@ -130,9 +130,9 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v]: c for v, c in r_coeffs.items()}, const)
         right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0)
 
-        g1 = Or(Equals(omega[2*i], Int(1)), And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
-        g2 = Or(Equals(omega[2*i+1], Int(1)), And(LE(p[2*i+1], right_x0), GE(right_x, Int(0))))
-        g3 = Or(Equals(omega[2*i+1], Int(0)), LT(Int(0), right_x))
+        g1 = Or(omega[2*i], And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
+        g2 = Or(omega[2*i+1], And(LE(p[2*i+1], right_x0), GE(right_x, Int(0))))
+        g3 = Or(Not(omega[2*i+1]), LT(Int(0), right_x))
 
         gamma.append(And(g1, g2, g3))
 
@@ -180,10 +180,9 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Step 8: Final assembly
     # ============================
-    restrictions = x_restriction
     guarded_gamma = And([Or(Not(qs[i]), gamma[i]) for i in range(l + n + m)])
 
-    result = And(restrictions, prop_skeleton, admissible, guarded_gamma)
+    result = And(x_restriction, prop_skeleton, admissible, guarded_gamma)
 
     return Exists(omega + qs, Exists(p + x + x0, result))
     
