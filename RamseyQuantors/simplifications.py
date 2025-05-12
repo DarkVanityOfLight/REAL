@@ -17,12 +17,19 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
     and the right side with vars, coefficients and a constant integer part.
     """
 
-    # TODO: Make each as one iteration
-    Lw = {k: v for k, v in left.items() if k in vars}
-    Lo = {k: v for k, v in left.items() if k not in vars}
+    Lw, Lo = {}, {}
+    for k, v in left.items():
+        if k in vars:
+            Lw[k] = v
+        else:
+            Lo[k] = v
 
-    Rw = {k: v for k, v in right.items() if k in vars}
-    Ro = {k: v for k, v in right.items() if k not in vars}
+    Rw, Ro = {}, {}
+    for k, v in right.items():
+        if k in vars:
+            Lw[k] = v
+        else:
+            Lo[k] = v
 
     # Move all variables with vars to the left
     new_left = {}
