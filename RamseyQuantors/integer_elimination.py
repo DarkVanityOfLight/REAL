@@ -48,7 +48,7 @@ def eliminate_integer_existential_quantifiers(formula: ExtendedFNode) -> Extende
     substituted_formula = subformula.substitute(substitution_map)
 
     # Get the current variables bound originally by the ramsey quantifier
-    x, y = formula.quantifier_vars()
+    x, y = cast(Tuple[Tuple[ExtendedFNode], Tuple[ExtendedFNode]], formula.quantifier_vars())
 
     # Add the newly introduced variables
     new_x =  x + v1 + v2
@@ -96,7 +96,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 
     # Create symbols for the arithmetic series (x_0 + k x) that contains the clique
-    vars1, vars2 = qformula.quantifier_vars()
+    vars1, vars2 = cast(Tuple[Tuple[ExtendedFNode], Tuple[ExtendedFNode]], qformula.quantifier_vars())
 
     o = len(vars1)
 
@@ -133,7 +133,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         left_coeff_map, left_const = collect_sum_terms(left)
         right_coeff_map, right_const = collect_sum_terms(right)
 
-        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, vars1)
+        left_coeff_map, right_coeff_map, const = arithmetic_solver(left_coeff_map, left_const, right_coeff_map, right_const, set(vars1))
 
         left_coeff_map_with_x = { sub_var1_with_x[var]: coeff for var, coeff in left_coeff_map.items() }
         left_with_x_as_var1 = reconstruct_from_coeff_map(left_coeff_map_with_x, 0)
