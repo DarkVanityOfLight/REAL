@@ -171,23 +171,12 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         l_coeffs, r_coeffs, const = arithmetic_solver(left_coeff_map, left_constant, right_coeff_map, right_constant, set(vars1))
 
-        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0)
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0)
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0)
+        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx 
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
 
-        #v (x0 + x) + wz
-        combined_r_coeffs: Dict[ExtendedFNode, int] = {}
-        for v, c in r_coeffs.items():
-            if v in vars2:
-                # put both the x0- and the x-versions in the same map
-                combined_r_coeffs[sub_var2_with_x0[v]] = c
-                combined_r_coeffs[sub_var2_with_x[v]]  = c
-            else:
-                # keep all other vars unchanged
-                combined_r_coeffs[v] = c
-        right_x_x0 = reconstruct_from_coeff_map(combined_r_coeffs, const)
-
-        # TODO: Add the not back on
+        #v x0 + wz + d
+        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const)
 
         def negate_if(term):
             if is_negated:
@@ -195,7 +184,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
             else:
                 return term
 
-        g1 = negate_if(Equals(Mod(left_x0, Int(mod)), Mod(right_x_x0, Int(mod))))# u x0 % e = v (x0 + x) + wz + d % e
+        g1 = negate_if(Equals(Mod(left_x0, Int(mod)), Mod(right_x0, Int(mod))))# u x0 % e = v x0 + wz + d % e
         g2 = Equals(Mod(left_x, Int(mod)), Int(0))# u x % e = 0 % e
         g3 = Equals(Mod(right_x, Int(mod)), Int(0))# vx %e = 0 % e
 
