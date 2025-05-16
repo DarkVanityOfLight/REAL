@@ -20,14 +20,31 @@ def equal_exists_int(dim: int):
     z = [Symbol(f"c_{i}", INT) for i in range(dim)]
 
     # f = And([And(x[i] < y[i], Equals(x[i], z[i])) for i in range(dim)])
-    f = And([And(x[i] < y[i], And(GE(x[i], z[i]), LE(x[i], z[i]))) for i in range(dim)])
+    f = And([And(x[i] < y[i], Equals(x[i], z[i])) for i in range(dim)])
     ef = Exists(z, f)
     ref = Ramsey(x, y, ef)
 
     return ref
 
+class SuspendTypeChecking(object):
+    """Context to disable type-checking during formula creation."""
 
-f = equal_exists_int(1000)
+    def __init__(self, env=None):
+        if env is None:
+            env = get_env()
+        self.env = env
+        self.mgr = env.formula_manager
+
+    def __enter__(self):
+        """Entering a Context: Disable type-checking."""
+        self.mgr._do_type_check = lambda x : x
+        return self.env
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exiting the Context: Re-enable type-checking."""
+        self.mgr._do_type_check = self.mgr._do_type_check_real
+
+f = equal_exists_int(1)
 #print(f.serialize())
-full_ramsey_elimination_int(f)
+print(full_ramsey_elimination_int(f).serialize())
 
