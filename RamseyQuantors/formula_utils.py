@@ -7,7 +7,7 @@ from RamseyQuantors.formula import ExtendedFormulaManager
 from RamseyQuantors.operators import MOD_NODE_TYPE
 from typing import Tuple, cast, Dict
 
-from pysmt.operators import EQUALS, NOT
+from pysmt.operators import EQUALS, NOT, PLUS, MINUS, TIMES
 from pysmt.shortcuts import Int, Plus, Times, get_env
 
 def isAtom(atom: FNode) -> bool:
