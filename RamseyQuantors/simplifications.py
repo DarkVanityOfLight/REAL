@@ -52,6 +52,77 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
     return (new_left, new_right, const)
 
 
+def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
+    """
+    Push negations down to atoms
+    Rewrite integer <= into < with +1
+    """
+    typ = node.node_type()
+    match typ:
+        case operators.LE:
+            # x <= y => x < y+1
+            lhs, rhs = node.args()
+
+            return LT(lhs, Plus(rhs, Int(1)))
+
+        case typ if typ in (operators.LT, EQUALS):
+            return node
+
+        # Push inside
+        case operators.NOT:
+            sub = node.arg(0)
+            t = sub.node_type()
+
+            match t:
+                case operators.NOT:
+                    return make_int_input_format(sub.arg(0))
+                case operators.AND:
+                    return Or(tuple(make_int_input_format(Not(c)) for c in sub.args()))
+                case operators.OR:
+                    return And(tuple(make_int_input_format(Not(c)) for c in sub.args()))
+                case operators.IMPLIES:
+                    a, b = sub.args()
+                    return And(make_int_input_format(a), make_int_input_format(Not(b)))
+                case operators.IFF:
+                    a, b = sub.args()
+                    return And(
+                        Or(make_int_input_format(Not(a)), make_int_input_format(Not(b))),
+                        Or(make_int_input_format(a), make_int_input_format(b))
+                    )
+                case operators.FORALL:
+                    vars = sub.quantifier_vars()
+                    body = sub.arg(0)
+                    return Exists(vars, make_int_input_format(Not(body)))
+                case operators.EXISTS:
+                    vars = sub.quantifier_vars()
+                    body = sub.arg(0)
+                    return ForAll(vars, make_int_input_format(Not(body)))
+
+                # Negated atoms
+                case operators.LE:
+                    # ~(x <= y) => x > y => y < x
+                    lhs, rhs = sub.args()
+                    return LT(rhs, lhs)
+                case operators.LT:
+                    lhs, rhs = sub.args()
+                    return LT(rhs, Plus(lhs, Int(1)))
+                case operators.EQUALS:
+                    lhs, rhs = sub.args()
+
+                    if (((len(lhs.args()) > 1) and lhs.arg(0).node_type() == MOD_NODE_TYPE) or 
+                        ((len(rhs.args()) > 1) and rhs.arg(0).node_type() == MOD_NODE_TYPE)): # Ignore equations with mod
+                        return Not(sub)
+                    else:
+                        # ~ (x = y) => x < y \/ y < x
+                        return Or(LT(lhs, rhs), GT(lhs, rhs))
+                case _:
+                    print(f"Fall through case {node}")
+                    return create_node(NOT, make_int_input_format(sub), node._content.payload)
+
+        case _:
+            print(f"Fall through case {node}")
+            return create_node(typ, tuple(make_int_input_format(c) for c in node.args()), node._content.payload)
+
 def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
     """
     Rewrite x <= y to x < y +1, this equivalenz only holds for the integer case.
