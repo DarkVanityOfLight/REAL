@@ -7,8 +7,8 @@ from RamseyQuantors.formula import ExtendedFormulaManager
 from RamseyQuantors.operators import MOD_NODE_TYPE
 from typing import Tuple, cast, Dict
 
-from pysmt.operators import EQUALS, NOT, PLUS, MINUS, TIMES
-from pysmt.shortcuts import Int, Plus, Times, get_env
+from pysmt.operators import EQUALS, NOT, PLUS, MINUS, SYMBOL, TIMES
+from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
 def isAtom(atom: FNode) -> bool:
     """
@@ -135,4 +135,9 @@ def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
 
 def create_node(node_type, args, payload=None) -> ExtendedFNode:
     mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
+
+    if node_type == SYMBOL:
+        print(f"Creating symbol {payload}")
+        return Symbol(payload[0], payload[1])
+
     return mngr.create_node(node_type, args, payload)

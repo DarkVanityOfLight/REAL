@@ -51,6 +51,14 @@ def arithmetic_solver(left: SumOfTerms, left_const: int,
 
     return (new_left, new_right, const)
 
+def contains_mod(node: ExtendedFNode) -> bool:
+    """Check if a node contains a modulo operation anywhere in its subtree."""
+    if node.node_type() == MOD_NODE_TYPE:
+        return True
+    for arg in node.args():
+        if contains_mod(arg):
+            return True
+    return False
 
 def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
     """
@@ -77,9 +85,9 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                 case operators.NOT:
                     return make_int_input_format(sub.arg(0))
                 case operators.AND:
-                    return Or(tuple(make_int_input_format(Not(c)) for c in sub.args()))
+                    return Or([make_int_input_format(Not(c)) for c in sub.args()])
                 case operators.OR:
-                    return And(tuple(make_int_input_format(Not(c)) for c in sub.args()))
+                    return And([make_int_input_format(Not(c)) for c in sub.args()])
                 case operators.IMPLIES:
                     a, b = sub.args()
                     return And(make_int_input_format(a), make_int_input_format(Not(b)))
@@ -108,20 +116,19 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                     return LT(rhs, Plus(lhs, Int(1)))
                 case operators.EQUALS:
                     lhs, rhs = sub.args()
-
-                    if (((len(lhs.args()) > 1) and lhs.arg(0).node_type() == MOD_NODE_TYPE) or 
-                        ((len(rhs.args()) > 1) and rhs.arg(0).node_type() == MOD_NODE_TYPE)): # Ignore equations with mod
+                    if contains_mod(lhs) or contains_mod(rhs):
                         return Not(sub)
                     else:
                         # ~ (x = y) => x < y \/ y < x
                         return Or(LT(lhs, rhs), GT(lhs, rhs))
+                case operators.SYMBOL:
+                    return Not(sub)
                 case _:
                     print(f"Fall through case {node}")
                     return create_node(NOT, make_int_input_format(sub), node._content.payload)
 
         case _:
-            print(f"Fall through case {node}")
-            return create_node(typ, tuple(make_int_input_format(c) for c in node.args()), node._content.payload)
+            return create_node(typ, tuple([make_int_input_format(c) for c in node.args()]), node._content.payload)
 
 def int_inequality_rewriter(formula: ExtendedFNode) -> ExtendedFNode:
     """
