@@ -7,7 +7,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast, Optional
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_solver, int_inequality_rewriter, push_negations_inside
+from RamseyQuantors.simplifications import arithmetic_solver, int_inequality_rewriter, make_int_input_format, push_negations_inside
 
 from RamseyQuantors.formula_utils import collect_atoms, reconstruct_from_coeff_map, collect_sum_terms
 
@@ -226,8 +226,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
     assert formula.is_ramsey()
-    f = int_inequality_rewriter(formula) # Doesn't change formula size
-    f = push_negations_inside(f) # Only introduces new terms for !=, so will produce a small formula
+
+    f = make_int_input_format(formula)
 
     # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
     f = eliminate_integer_existential_quantifiers(f) 
