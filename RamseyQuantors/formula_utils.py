@@ -137,7 +137,6 @@ def create_node(node_type, args, payload=None) -> ExtendedFNode:
     mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
 
     if node_type == SYMBOL:
-        print(f"Creating symbol {payload}")
         return Symbol(payload[0], payload[1])
 
     return mngr.create_node(node_type, args, payload)

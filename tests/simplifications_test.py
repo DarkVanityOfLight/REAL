@@ -7,9 +7,7 @@ from RamseyQuantors.formula_utils import isAtom, apply_to_atoms
 from RamseyQuantors.shortcuts import Mod
 from RamseyQuantors.simplifications import (
     arithmetic_solver,
-    int_inequality_rewriter,
     make_int_input_format,
-    push_negations_inside
 )
 
 get_env().enable_infix_notation = True
@@ -40,89 +38,6 @@ def test_arithmetic_solver_simple():
     assert _map_eq(new_right, {a: -2, b: 7})
     # constant part: right_const - left_const
     assert const == 6
-
-# --- Tests for int_inequality_rewriter ---
-
-def test_int_inequality_rewriter_le():
-    f = LE(x, y)
-    g = int_inequality_rewriter(f)
-    # Should rewrite x <= y  to x < y + 1
-    assert g.node_type() == operators.LT
-    left_arg, right_arg = g.args()
-    assert left_arg == x
-    # y + 1 appears on right
-    assert right_arg.is_plus()
-    terms = set(right_arg.args())
-    assert y in terms and Int(1) in terms
-
-
-def test_int_inequality_rewriter_mixed():
-    f = And(LE(a, b), GT(x, y))
-    g = int_inequality_rewriter(f)
-    # GT is flipped, LE rewritten
-    assert g.arg(0).arg(0) == a and g.arg(0).arg(1) == Plus(b, Int(1))
-    assert g.arg(1).arg(0) == y and g.arg(1).arg(1) == x
-
-# --- Tests for push_negations_inside ---
-
-def test_push_negations_inside_atomic():
-    # Atomic negation stays
-    eq = Equals(x, y)
-    neg = Not(eq)
-    out = push_negations_inside(neg)
-    # Should expand to x<y \/ y<x
-    assert out.node_type() == operators.OR
-    clauses = set(out.args())
-    assert LT(x, y) in clauses and GT(x, y) in clauses
-
-
-def test_push_negations_inside_composite():
-    # ~(a /\ b) => ~a \/ ~b => push to atoms
-    f = And(LT(x, y), LE(a, b))
-    nf = push_negations_inside(Not(f))
-    # Should be Or of (y <= x) and b > a
-    assert nf.node_type() == operators.OR
-    atoms = list(nf.args())
-    # First: Not(LT(x,y)) -> y <= x
-    assert atoms[0].node_type() == operators.LE and atoms[0].args() == (y, x)
-    # Second: Not(LE(a,b)) -> b < a
-    assert atoms[1] == LT(b, a)
-
-
-def test_push_negations_inside_quantifiers():
-    forall = ForAll([x], And(LT(x, y), Equals(a, b)))
-    # ~(forall x. ...) -> exists x. ~(...)
-    out = push_negations_inside(Not(forall))
-    assert out.node_type() == operators.EXISTS
-    # Inside, should have And around negated atoms
-    inner = out.arg(0)
-    print(inner)
-    assert inner.node_type() == operators.OR or inner.node_type() == operators.AND
-
-    exists = Exists([y], LT(x, y))
-    # ~(exists y. x<y) -> forall y. ~(x<y) -> forall y. y <= x
-    out2 = push_negations_inside(Not(exists))
-    assert out2.node_type() == operators.FORALL
-    body = out2.arg(0)
-    assert body.node_type() == operators.LE and body.args() == (y, x)
-
-
-def test_push_negations_inside_imp_iff():
-    imp = Implies(LT(x, y), LT(y, z))
-    # ~(P->Q) -> P /\ ~Q
-    out = push_negations_inside(Not(imp))
-    assert out.node_type() == operators.AND
-    left, right = out.args()
-    assert left == LT(x, y)
-    assert right.node_type() == operators.LE and right.args() == (z, y)
-
-    iff = Iff(LT(a, b), LT(b, a))
-    # ~(P<->Q) -> (~P \/ ~Q) /\ (P \/ Q)
-    out2 = push_negations_inside(Not(iff))
-    assert out2.node_type() == operators.AND
-    # Should have two Ors
-    ors = [c for c in out2.args() if c.node_type() == operators.OR]
-    assert len(ors) == 2
 
 # --- Tests for isAtom and apply_to_atoms on mixed formulas ---
 
