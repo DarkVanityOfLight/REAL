@@ -159,9 +159,9 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         right_hand_eq: ExtendedFNode = equation.arg(1)
 
         # Peel of mod
-        assert left_hand_eq == MOD_NODE_TYPE
+        assert left_hand_eq.node_type() == MOD_NODE_TYPE
         assert left_hand_eq.arg(1).is_int_constant()
-        assert right_hand_eq == MOD_NODE_TYPE
+        assert right_hand_eq.node_type() == MOD_NODE_TYPE
         assert right_hand_eq.arg(1).is_int_constant()
 
         mod = left_hand_eq.arg(1).constant_value()
