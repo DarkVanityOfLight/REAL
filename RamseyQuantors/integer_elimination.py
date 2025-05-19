@@ -218,7 +218,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         ))
 
     # ============================
-    # Step 8: Final assembly
+    # Final assembly
     # ============================
     guarded_gamma = And([Or(Not(qs[i]), gamma[i]) for i in range(l + n + m)])
 
