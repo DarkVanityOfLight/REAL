@@ -174,13 +174,13 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         lx_map = apply_subst(l_coeffs, sub1_x) # u x
         lx0_map = apply_subst(l_coeffs, sub1_x0) # u x0
-        rx0_map = apply_subst(r_coeffs, sub2_x0) # u x0 + wz
-        rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # ux
+        rx0_map = apply_subst(r_coeffs, sub2_x0) # v x0 + wz
+        rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # vx
 
         lx = reconstruct_from_coeff_map(lx_map, 0)
         lx0 = reconstruct_from_coeff_map(lx0_map, 0)
-        rx0 = reconstruct_from_coeff_map(rx0_map, const) # u x0 + wz + d
-        rx = reconstruct_from_coeff_map(rx_map, 0) # u x
+        rx0 = reconstruct_from_coeff_map(rx0_map, const) # v x0 + wz + d
+        rx = reconstruct_from_coeff_map(rx_map, 0) # vx
 
         def negate_if(t): return Not(t) if is_negated else t
 
@@ -204,12 +204,12 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         lx_map = apply_subst(l_coeffs, sub1_x) # rx
         lx0_map = apply_subst(l_coeffs, sub1_x0) # r x0
         rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
-        rx0_map = apply_subst(r_coeffs,  sub2_x0) # r x0 + tz
+        rx0_map = apply_subst(r_coeffs,  sub2_x0) # s x0 + tz
 
         left_x = reconstruct_from_coeff_map(lx_map, 0)
         right_x = reconstruct_from_coeff_map(rx_map, 0)
         left_x0 = reconstruct_from_coeff_map(lx0_map, 0)
-        right_x0 = reconstruct_from_coeff_map(rx0_map, const) # r x0 + tz + h
+        right_x0 = reconstruct_from_coeff_map(rx0_map, const) # s x0 + tz + h
 
         gamma.append(And(
             Equals(left_x, Int(0)), # rx = 0
