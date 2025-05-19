@@ -6,7 +6,6 @@ import pytest
 from RamseyQuantors.formula_utils import (
     isAtom,
     collect_atoms,
-    collect_sum_terms,
     reconstruct_from_coeff_map,
     apply_to_atoms,
     ast_to_terms
