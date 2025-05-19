@@ -230,7 +230,8 @@ def full_ramsey_elimination_int(formula: ExtendedFNode):
     f = make_int_input_format(formula)
 
     # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
-    f = eliminate_integer_existential_quantifiers(f) 
+    if formula.arg(0).is_exists():
+        f = eliminate_integer_existential_quantifiers(f) 
 
     return eliminate_ramsey_int(f)
 
