@@ -7,9 +7,9 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast, Optional
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_solver, int_inequality_rewriter, make_int_input_format, push_negations_inside
+from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format
 
-from RamseyQuantors.formula_utils import collect_atoms, reconstruct_from_coeff_map, collect_sum_terms
+from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -117,8 +117,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     for i, ineq in enumerate(ineqs):
         left, right = ineq.arg(0), ineq.arg(1)
-        l_coeffs, l_const = collect_sum_terms(left)
-        r_coeffs, r_const = collect_sum_terms(right)
+        l_coeffs, l_const = ast_to_terms(left)
+        r_coeffs, r_const = ast_to_terms(right)
 
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
@@ -165,8 +165,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         mod = right_hand_eq.arg(1).constant_value()
         right = right_hand_eq.arg(0)
 
-        left_coeff_map, right_constant = collect_sum_terms(left)
-        right_coeff_map, left_constant = collect_sum_terms(right)
+        left_coeff_map, right_constant = ast_to_terms(left)
+        right_coeff_map, left_constant = ast_to_terms(right)
 
         l_coeffs, r_coeffs, const = arithmetic_solver(left_coeff_map, left_constant, right_coeff_map, right_constant, set(vars1))
 
@@ -197,8 +197,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         # rx = sy + tz + h
 
         left, right = eq.arg(0), eq.arg(1)
-        l_coeffs, l_const = collect_sum_terms(left)
-        r_coeffs, r_const = collect_sum_terms(right)
+        l_coeffs, l_const = ast_to_terms(left)
+        r_coeffs, r_const = ast_to_terms(right)
 
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
