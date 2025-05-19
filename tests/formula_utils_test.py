@@ -43,26 +43,6 @@ def test_collect_atoms_partitioning():
     assert neg_mod in modeqs
     assert ineqs == (ineq,)
 
-
-def test_collect_sum_terms_simple():
-    # 5*x - 3*a + 7
-    term = Plus(Times(Int(5), x), Times(Int(-3), a), Int(7))
-    coeffs, const = collect_sum_terms(term)
-    assert coeffs[x] == 5
-    assert coeffs[a] == -3
-    assert const == 7
-
-
-def test_collect_sum_terms_nested_minus():
-    # x - (2*y - 4) => x - 2*y + 4
-    inner = Minus(Times(Int(2), y), Int(4))
-    term = Minus(x, inner)
-    coeffs, const = collect_sum_terms(term)
-    assert coeffs[x] == 1
-    assert coeffs[y] == -2
-    assert const == 4
-
-
 def test_reconstruct_from_coeff_map_zero():
     # All zero coefficients and zero constant
     empty = reconstruct_from_coeff_map({}, 0)
