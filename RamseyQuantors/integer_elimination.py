@@ -7,7 +7,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from typing import Dict, Tuple, cast, Optional
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format
+from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format, apply_subst
 
 from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map
 
@@ -105,10 +105,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     x = [Symbol(f"x_{i}", INT) for i in range(o)]
     x_restriction = Or([NotEquals(x[i], Int(0)) for i in range(o)])
 
-    sub_var1_with_x0 = {vars1[i]: x0[i] for i in range(o)}
-    sub_var2_with_x0 = {vars2[i]: x0[i] for i in range(o)}
-    sub_var1_with_x  = {vars1[i]: x[i] for i in range(o)}
-    sub_var2_with_x  = {vars2[i]: x[i] for i in range(o)}
+    sub1_x0= {vars1[i]: x0[i] for i in range(o)}
+    sub2_x0 = {vars2[i]: x0[i] for i in range(o)}
+    sub1_x  = {vars1[i]: x[i] for i in range(o)}
+    sub2_x  = {vars2[i]: x[i] for i in range(o)}
 
     # ============================
     # Handle inequalities
@@ -116,16 +116,26 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     gamma = []
 
     for i, ineq in enumerate(ineqs):
+
+        # r x = sy + tz + h
+
         left, right = ineq.arg(0), ineq.arg(1)
         l_coeffs, l_const = ast_to_terms(left)
         r_coeffs, r_const = ast_to_terms(right)
 
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
-        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const) # sx0 + tz + h
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
+
+        lx = apply_subst(l_coeffs, sub1_x) # r x
+        lx0 = apply_subst(l_coeffs, sub1_x) # r x0
+        rx0 = apply_subst(r_coeffs, sub2_x0) # s x0 + tz + h
+        rx  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
+
+        left_x   = reconstruct_from_coeff_map(lx,  0)
+        left_x0  = reconstruct_from_coeff_map(lx0, 0)
+        right_x0 = reconstruct_from_coeff_map(rx0, const)
+        right_x  = reconstruct_from_coeff_map(rx,  0)
+
 
         g1 = Or(omega[2*i], And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
         g2 = Or(omega[2*i+1], And(LE(p[2*i+1], right_x0), GE(right_x, Int(0))))
@@ -141,6 +151,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         # !(ux % e = vy + wz + d % e)
         # ux % e = vy + wz + d % e
+
         is_negated = eq.node_type() == NOT
         equation = eq if not is_negated else eq.arg(0)
 
@@ -148,44 +159,34 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         right_hand_eq: ExtendedFNode = equation.arg(1)
 
         # Peel of mod
-        left: ExtendedFNode
-        right: ExtendedFNode
-        mod: Optional[int] = None
-
         assert left_hand_eq == MOD_NODE_TYPE
-        assert cast(ExtendedFNode, left_hand_eq.arg(1)).is_int_constant()
-
-        mod = cast(ExtendedFNode, left_hand_eq.arg(1)).constant_value()
-        left = left_hand_eq.arg(0)
-
+        assert left_hand_eq.arg(1).is_int_constant()
         assert right_hand_eq == MOD_NODE_TYPE
-        assert cast(ExtendedFNode, right_hand_eq.arg(1)).is_int_constant()
+        assert right_hand_eq.arg(1).is_int_constant()
+
+        mod = left_hand_eq.arg(1).constant_value()
         assert mod == right_hand_eq.arg(1).constant_value() 
 
-        mod = right_hand_eq.arg(1).constant_value()
-        right = right_hand_eq.arg(0)
+        # Construct atoms
+        l_coeffs, l_const = ast_to_terms(left_hand_eq.arg(0))
+        r_coeffs, r_const = ast_to_terms(right_hand_eq.arg(0))
+        l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_coeff_map, right_constant = ast_to_terms(left)
-        right_coeff_map, left_constant = ast_to_terms(right)
+        lx_map = apply_subst(l_coeffs, sub1_x) # u x
+        lx0_map = apply_subst(l_coeffs, sub1_x0) # u x0
+        rx0_map = apply_subst(r_coeffs, sub2_x0) # u x0 + wz
+        rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # ux
 
-        l_coeffs, r_coeffs, const = arithmetic_solver(left_coeff_map, left_constant, right_coeff_map, right_constant, set(vars1))
+        lx = reconstruct_from_coeff_map(lx_map, 0)
+        lx0 = reconstruct_from_coeff_map(lx0_map, 0)
+        rx0 = reconstruct_from_coeff_map(rx0_map, const) # u x0 + wz + d
+        rx = reconstruct_from_coeff_map(rx_map, 0) # u x
 
-        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx 
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
+        def negate_if(t): return Not(t) if is_negated else t
 
-        #v x0 + wz + d
-        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const)
-
-        def negate_if(term):
-            if is_negated:
-                return Not(term)
-            else:
-                return term
-
-        g1 = negate_if(Equals(Mod(left_x0, Int(mod)), Mod(right_x0, Int(mod))))# u x0 % e = v x0 + wz + d % e
-        g2 = Equals(Mod(left_x, Int(mod)), Int(0))# u x % e = 0 % e
-        g3 = Equals(Mod(right_x, Int(mod)), Int(0))# vx %e = 0 % e
+        g1 = negate_if(Equals(Mod(lx0, Int(mod)), Mod(rx0, Int(mod))))# u x0 % e = v x0 + wz + d % e
+        g2 = Equals(Mod(lx, Int(mod)), Int(0))# u x % e = 0 % e
+        g3 = Equals(Mod(rx, Int(mod)), Int(0))# vx %e = 0 % e
 
         gamma.append(And(g1, g2, g3))
 
@@ -194,22 +195,21 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     for i, eq in enumerate(eqs):
 
-        # rx = sy + tz + h
-
-        left, right = eq.arg(0), eq.arg(1)
-        l_coeffs, l_const = ast_to_terms(left)
-        r_coeffs, r_const = ast_to_terms(right)
-
+        l_coeffs, l_const = ast_to_terms(eq.arg(0))
+        r_coeffs, r_const = ast_to_terms(eq.arg(1))
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
+        # rx = sy + tz + h
 
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0 
-        right_x0 = reconstruct_from_coeff_map(
-            {sub_var2_with_x0[v] if v in sub_var2_with_x0 else v: c for v, c in r_coeffs.items()},
-            const
-        )# s x0 + tz + h
+        lx_map = apply_subst(l_coeffs, sub1_x) # rx
+        lx0_map = apply_subst(l_coeffs, sub1_x0) # r x0
+        rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
+        rx0_map = apply_subst(r_coeffs,  sub2_x0) # r x0 + tz
+
+        left_x = reconstruct_from_coeff_map(lx_map, 0)
+        right_x = reconstruct_from_coeff_map(rx_map, 0)
+        left_x0 = reconstruct_from_coeff_map(lx0_map, 0)
+        right_x0 = reconstruct_from_coeff_map(rx0_map, const) # r x0 + tz + h
 
         gamma.append(And(
             Equals(left_x, Int(0)), # rx = 0

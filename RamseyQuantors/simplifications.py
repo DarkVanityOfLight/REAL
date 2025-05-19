@@ -129,3 +129,9 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
 
         case _:
             return create_node(typ, tuple([make_int_input_format(c) for c in node.args()]), node._content.payload)
+
+def apply_subst(coeffs: Dict[ExtendedFNode, int], subst: Dict[ExtendedFNode, ExtendedFNode]) -> Dict[ExtendedFNode, int]:
+    """
+    Apply a substitution map to a coefficient map, keeping unmapped keys.
+    """
+    return {subst.get(var, var): coeff for var, coeff in coeffs.items()}
