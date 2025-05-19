@@ -122,10 +122,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
-        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0)
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0)
-        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v]: c for v, c in r_coeffs.items()}, const)
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0)
+        left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
+        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const) # sx0 + tz + h
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
 
         g1 = Or(omega[2*i], And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
         g2 = Or(omega[2*i+1], And(LE(p[2*i+1], right_x0), GE(right_x, Int(0))))
@@ -175,7 +175,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
 
         #v x0 + wz + d
-        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const)
+        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v] if v in vars2 else v: c for v, c in r_coeffs.items()}, const)
 
         def negate_if(term):
             if is_negated:
@@ -203,10 +203,13 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
         left_x = reconstruct_from_coeff_map({sub_var1_with_x[v]: c for v, c in l_coeffs.items()}, 0) # rx
-        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # vx
+        right_x = reconstruct_from_coeff_map({sub_var2_with_x[v]: c for v, c in r_coeffs.items() if v in vars2}, 0) # sx
 
-        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0
-        right_x0 = reconstruct_from_coeff_map({sub_var2_with_x0[v]: c for v, c in r_coeffs.items()}, 0) # s x0 + tz + h
+        left_x0 = reconstruct_from_coeff_map({sub_var1_with_x0[v]: c for v, c in l_coeffs.items()}, 0) # r x0 
+        right_x0 = reconstruct_from_coeff_map(
+            {sub_var2_with_x0[v] if v in sub_var2_with_x0 else v: c for v, c in r_coeffs.items()},
+            const
+        )# s x0 + tz + h
 
         gamma.append(And(
             Equals(left_x, Int(0)), # rx = 0
