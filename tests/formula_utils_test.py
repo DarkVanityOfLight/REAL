@@ -1,5 +1,6 @@
 from pysmt.shortcuts import Int, Symbol, And, Equals, LT, Not, Plus, Times, Minus
 from pysmt.typing import INT
+import pytest
 
 # Import the functions under test
 from RamseyQuantors.formula_utils import (
@@ -7,7 +8,8 @@ from RamseyQuantors.formula_utils import (
     collect_atoms,
     collect_sum_terms,
     reconstruct_from_coeff_map,
-    apply_to_atoms
+    apply_to_atoms,
+    ast_to_terms
 )
 
 # Create some sample symbols
@@ -88,3 +90,57 @@ def test_apply_to_atoms_replaces_atoms():
     assert transformed.is_and()
     for arg in transformed.args():
         assert arg == Equals(Int(42), Int(42))
+
+
+@ pytest.mark.parametrize("value", [0, 1, -5, 42])
+def test_int_constant(value):
+    node = Int(value)
+    terms, const = ast_to_terms(node)
+    assert terms == {}
+    assert const == value
+
+@ pytest.mark.parametrize("name", ["x", "y", "z"])
+def test_symbol(name):
+    sym = Symbol(name, INT)
+    terms, const = ast_to_terms(sym)
+    assert const == 0
+    assert terms == {sym: 1}
+
+@ pytest.mark.parametrize("args, expected_terms, expected_const", [
+    ([Int(1), Int(2), Int(3)], {}, 6),
+    ([Symbol('x', INT), Int(3)], {Symbol('x', INT): 1}, 3),
+    ([Symbol('x', INT), Symbol('x', INT)], {Symbol('x', INT): 2}, 0),
+])
+def test_plus(args, expected_terms, expected_const):
+    node = Plus(args)
+    terms, const = ast_to_terms(node)
+    assert const == expected_const
+    assert terms == expected_terms
+
+@ pytest.mark.parametrize("expr, expected_terms, expected_const", [
+    (Minus(Int(5), Int(2)), {}, 3),
+    (Minus(Symbol('x', INT), Int(2)), {Symbol('x', INT): 1}, -2),
+    (Minus(Symbol('x', INT), Symbol('x', INT)), {Symbol('x', INT): 0}, 0),
+])
+def test_minus(expr, expected_terms, expected_const):
+    terms, const = ast_to_terms(expr)
+    assert const == expected_const
+    assert terms == {s: c for s, c in expected_terms.items() if c != 0}
+
+@ pytest.mark.parametrize("expr, expected_terms, expected_const", [
+    (Times([Int(3), Int(4)]), {}, 12),
+    (Times([Int(3), Symbol('x', INT)]), {Symbol('x', INT): 3}, 0),
+    (Times([Symbol('x', INT), Int(5)]), {Symbol('x', INT): 5}, 0),
+])
+def test_times(expr, expected_terms, expected_const):
+    terms, const = ast_to_terms(expr)
+    print(terms, const)
+    assert const == expected_const
+    assert terms == expected_terms
+
+
+def test_times_invalid():
+    # x * y should raise ValueError
+    expr = Times([Symbol('x', INT), Symbol('y', INT)])
+    with pytest.raises(ValueError):
+        ast_to_terms(expr)
