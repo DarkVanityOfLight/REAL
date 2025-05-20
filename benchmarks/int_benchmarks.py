@@ -25,12 +25,30 @@ def benchmark_equal_exists_int(dim: int):
 
     benchmark(Ramsey(x, y, Exists(z, f)))
 
+def benchmark_equal_exists_2_int(dim: int):
+    x = int_vector("a", dim)
+    y = int_vector("b", dim)
+    z = int_vector("c", dim)
+
+    f = And([And(x[i] < y[i], And(x[i] <= z[i], x[i] >= z[i])) for i in range(dim)])
+
+    benchmark(Ramsey(x, y, Exists(z, f)))
+
 def benchmark_equal_free_int(dim: int):
     x = int_vector("a", dim)
     y = int_vector("b", dim)
     z = int_vector("c", dim)
 
     f = And([And(x[i] < y[i], Equals(x[i], z[i])) for i in range(dim)])
+
+    benchmark(Ramsey(x, y, f))
+
+def benchmark_equal_free_2_int(dim: int):
+    x = int_vector("a", dim)
+    y = int_vector("b", dim)
+    z = int_vector("c", dim)
+
+    f = And([And(x[i] < y[i], And(x[i] >= z[i], x[i] <= z[i])) for i in range(dim)])
 
     benchmark(Ramsey(x, y, f))
 

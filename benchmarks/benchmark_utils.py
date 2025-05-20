@@ -1,17 +1,23 @@
 
 import sys, os
+
+from pysmt.constants import z3
+from pysmt.logics import LIA
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import inspect
 import argparse
 import importlib
 
-from pysmt.shortcuts import get_env
+from pysmt.shortcuts import Portfolio, Solver, get_env, get_model, get_unsat_core, is_sat
+from pysmt.solvers.z3 import Z3Solver
 
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.integer_elimination import full_ramsey_elimination_int
 from RamseyQuantors.formula_utils import isAtom
 
+global ELIMINATE_AND_SOLVE
+ELIMINATE_AND_SOLVE = True
 
 class Timer:
     def __init__(self, label: str):
@@ -79,6 +85,12 @@ def benchmark(formula: ExtendedFNode):
     print(f"#Atoms output: {get_atoms(r)}")
 
 
+    if ELIMINATE_AND_SOLVE:
+        with Timer("Solving: "):
+            sat = is_sat(r)
+            print(sat)
+
+
 
 # Collect all benchmark functions whose names end with '_int'
 def get_benchmark_functions(module):
@@ -125,10 +137,14 @@ if __name__ == '__main__':
 
     # Example argument mapping
     args_map = {
-        'benchmark_half_int': [(1000, 5000)],
+        'benchmark_half_int': [(1000, 50)],
         'benchmark_equal_exists_int': [(1000,)],
+        'benchmark_equal_exists_2_int': [(1000,)],
         'benchmark_equal_free_int': [(1000,)],
+        'benchmark_equal_free_2_int': [(1000,)],
         'benchmark_dickson_int': [(1000,)],
     }
+
+    ELIMINATE_AND_SOLVE = True
 
     run_all_benchmarks(benchmark_module, args_map)
