@@ -1,5 +1,5 @@
 from pysmt.operators import EQUALS, NOT
-from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE
+from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE, Times
 from pysmt.typing import INT, BOOL
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
@@ -10,6 +10,7 @@ from RamseyQuantors.shortcuts import Mod, Ramsey
 from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format, apply_subst
 
 from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map
+from math import gcd
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -79,7 +80,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     prop_skeleton = formula.substitute({
         atom: qs[i]
-        for i, atom in enumerate(eqs + modeqs + ineqs)
+        for i, atom in enumerate((ineqs + modeqs + eqs))
     })
 
     # ============================
@@ -127,7 +128,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
 
         lx = apply_subst(l_coeffs, sub1_x) # r x
-        lx0 = apply_subst(l_coeffs, sub1_x) # r x0
+        lx0 = apply_subst(l_coeffs, sub1_x0) # r x0
         rx0 = apply_subst(r_coeffs, sub2_x0) # s x0 + tz + h
         rx  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
 
