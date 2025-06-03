@@ -1,9 +1,11 @@
-
 import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pysmt.constants import z3
+from pysmt.environment import pop_env
 from pysmt.logics import LIA
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from RamseyQuantors.environment import push_ramsey
 import time
 import inspect
 import argparse
@@ -18,6 +20,11 @@ from RamseyQuantors.formula_utils import isAtom
 
 global ELIMINATE_AND_SOLVE
 ELIMINATE_AND_SOLVE = True
+
+def reset_env():
+    pop_env()
+    push_ramsey()
+    get_env().enable_infix_notation = True
 
 class Timer:
     def __init__(self, label: str):
@@ -90,7 +97,16 @@ def benchmark(formula: ExtendedFNode):
             sat = is_sat(r)
             print(sat)
 
+def format_arg(arg, max_len=50):
+    """Format an argument with truncation for long representations"""
+    s = str(arg)
+    if len(s) > max_len:
+        return s[:max_len-3] + '...'
+    return s
 
+def format_args(args, max_len=50):
+    """Format a tuple of arguments with truncation"""
+    return '(' + ', '.join(format_arg(a, max_len) for a in args) + ')'
 
 # Collect all benchmark functions whose names end with '_int'
 def get_benchmark_functions(module):
@@ -104,6 +120,7 @@ def run_all_benchmarks(module, arg_map=None):
     bench_funcs = get_benchmark_functions(module)
 
     for name, func in bench_funcs:
+        reset_env()
         sig = inspect.signature(func)
         arg_sets = []
 
@@ -116,11 +133,15 @@ def run_all_benchmarks(module, arg_map=None):
         for args in arg_sets:
             if not isinstance(args, tuple):
                 args = (args,)
-            print(f"--- Running {name} with args={args} ---")
+                
+            # Format arguments for clean output
+            formatted_args = format_args(args)
+            print(f"--- Running {name}{formatted_args} ---")
+            
             try:
                 func(*args)
             except Exception as e:
-                print(f"Error in {name}{args}: {e}")
+                print(f"Error in {name}{formatted_args}: {e}")
                 continue
 
 if __name__ == '__main__':
@@ -137,12 +158,35 @@ if __name__ == '__main__':
 
     # Example argument mapping
     args_map = {
+        # Original benchmarks
         'benchmark_half_int': [(1000, 50)],
         'benchmark_equal_exists_int': [(1000,)],
         'benchmark_equal_exists_2_int': [(1000,)],
         'benchmark_equal_free_int': [(1000,)],
         'benchmark_equal_free_2_int': [(1000,)],
         'benchmark_dickson_int': [(1000,)],
+        
+        # New benchmarks
+        'benchmark_congruence_mod_m': [(1000, 2)],          # dim=1000, modulus=2
+        'benchmark_sum_even': [(1000,)],                     # dim=1000
+        'benchmark_diff_in_kZ': [(1000, 3)],                 # dim=1000, k=3
+        'benchmark_sum_eq_C': [(2, 0)],                      # Fixed dim=2, C=0
+        'benchmark_dot_product_zero': [(1000, [1]*1000)],     # dim=1000, v=all-ones
+        'benchmark_sum_zero_hyperplane': [(1000,)],           # dim=1000
+        'benchmark_diff_set': [(1000, [(0,)*1000, (1,)+(0,)*999])],  # dim=1000, D={0, e1}
+        'benchmark_scheduling_overlap': [(2,)],              # Fixed dim=2
+        'benchmark_multi_resource_scheduling': [(1000, 998)], # dim=1000, n_resources=998
+        'benchmark_divisibility_by_k': [(1000, 4)],          # dim=1000, k=4
+        'benchmark_affine_progression': [(1000, [1]*1000)],   # dim=1000, v=all-ones
+        'benchmark_matrix_kernel': [(1000, [[1]*1000])],      # dim=1000, A=all-ones row
+        'benchmark_stabilizer': [(1000, [[1] * 1000] * 1000)],         # dim=1000, M=all-ones row
+        'benchmark_weighted_sum_eq': [(1000, list(range(1,1001)))],  # weights=1..1000
+        'benchmark_equal_first_k': [(1000, 3)],              # dim=1000, k=3
+        'benchmark_sum_parity': [(1000,)],                   # dim=1000
+        'benchmark_prefix_monotone': [(1000,)],              # dim=1000
+        'benchmark_sum_zero_or_C': [(1000, 5)],              # dim=1000, C=5
+        'benchmark_cross_coordinate_eq': [(1000,)],          # dim=1000
+        'benchmark_mixed_sign_pair': [(1000,)]               # dim=1000 (n=500 pairs)
     }
 
     ELIMINATE_AND_SOLVE = True
