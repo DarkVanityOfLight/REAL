@@ -5,8 +5,7 @@ from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_QUANTIFIER_NAME
 class ExtendedSmtLibParser(SmtLibParser):
     def __init__(self, environment=None, interactive=False):
         super().__init__(environment, interactive)
-        # Register the custom "ramsey" operator
-        self.interpreted[RAMSEY_QUANTIFIER_NAME] = self._enter_ramsey
+        self.interpreted["ramsey"] = self._enter_ramsey
         self.interpreted["mod"] = self._operator_adapter(self._modulo)
 
 
