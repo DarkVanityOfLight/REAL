@@ -4,13 +4,12 @@ from pysmt.typing import INT, BOOL
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
-from typing import Dict, Tuple, cast, Optional
+from typing import Dict, Tuple, cast
 
 from RamseyQuantors.shortcuts import Mod, Ramsey
 from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format, apply_subst
 
-from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map
-from math import gcd
+from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map, ensure_mod
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -155,9 +154,21 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
         is_negated = eq.node_type() == NOT
         equation = eq if not is_negated else eq.arg(0)
+        left_raw = equation.arg(0)
+        right_raw = equation.arg(1)
+        if left_raw.node_type() == MOD_NODE_TYPE and left_raw.arg(1).is_int_constant():
+            e      = left_raw.arg(1).constant_value()
+            left_n = left_raw.arg(0)
+            right_n= right_raw
+        elif right_raw.node_type() == MOD_NODE_TYPE and right_raw.arg(1).is_int_constant():
+            e       = right_raw.arg(1).constant_value()
+            right_n = right_raw.arg(0)
+            left_n  = left_raw
+        else:
+            raise ValueError(f"Neither side of `{equation}` is a mod‐expression")
 
-        left_hand_eq: ExtendedFNode = equation.arg(0)
-        right_hand_eq: ExtendedFNode = equation.arg(1)
+        left_hand_eq: ExtendedFNode = ensure_mod(left_n, e)
+        right_hand_eq: ExtendedFNode = ensure_mod(right_n, e)
 
         # Peel of mod
         assert left_hand_eq.node_type() == MOD_NODE_TYPE

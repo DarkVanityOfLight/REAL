@@ -10,12 +10,21 @@ from typing import Tuple, cast, Dict
 from pysmt.operators import EQUALS, INT_CONSTANT, NOT, PLUS, MINUS, SYMBOL, TIMES
 from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
+from RamseyQuantors.shortcuts import Mod
+
 def isAtom(atom: FNode) -> bool:
     """
     Check if the given node is an atom, that is an equation of the form
     ... ~ ... with ~ in { =, <, > }
     """
     return atom.get_type() == typ.BOOL and (atom.node_type() in operators.IRA_RELATIONS or atom.node_type() == operators.EQUALS)
+
+def ensure_mod(node: ExtendedFNode, modulus: int) -> ExtendedFNode:
+    if node.node_type() == MOD_NODE_TYPE and node.arg(1).constant_value() == modulus:
+        return node
+    else:
+        # wrap it as (node % modulus)
+        return Mod(node, Int(modulus))
 
 def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
     """Collect all atoms, returning (equalities, modequalities, inequalities)."""
