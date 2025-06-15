@@ -2,6 +2,7 @@ from typing import Self, Tuple
 from pysmt.fnode import FNode
 import pysmt.environment
 
+import RamseyQuantors.smtlib.printers
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
@@ -41,6 +42,19 @@ class ExtendedFNode(FNode):
 
     def __mod__(self, right):
         return self._apply_infix(right, _mgr().Mod, _mgr().BVURem)
+
+
+    def to_smtlib(self, daggify=True):
+        """Returns a Smt-Lib string representation of the formula.
+
+        The daggify parameter can be used to switch from a linear-size
+        representation that uses 'let' operators to represent the
+        formula as a dag or a simpler (but possibly exponential)
+        representation that expands the formula as a tree.
+
+        See :py:class:`SmtPrinter`
+        """
+        return RamseyQuantors.smtlib.printers.to_smtlib(self, daggify)
 
 
 def _env():
