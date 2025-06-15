@@ -27,13 +27,18 @@ def reset_env():
     get_env().enable_infix_notation = True
 
 class Timer:
-    def __init__(self, label: str):
-        self.label = label
+    def __init__(self):
+        self.start = None
+        self.end = None
+        self.interval = None
+        
     def __enter__(self):
         self.start = time.perf_counter()
+        return self
+        
     def __exit__(self, exc_type, exc, tb):
-        elapsed = time.perf_counter() - self.start
-        print(f"[{self.label}] {elapsed*1000:.2f} ms")
+        self.end = time.perf_counter()
+        self.interval = self.end - self.start
 
 class SuspendTypeChecking(object):
     """Context to disable type-checking during formula creation."""
@@ -81,31 +86,43 @@ def get_atoms(formula: ExtendedFNode) -> int:
     walk(formula)
     return len(seen)
 
-def benchmark(formula: ExtendedFNode):
-    with SuspendTypeChecking():
-        with Timer("Time elimination: "):
-            r = full_ramsey_elimination_int(formula)
-
-    print(f"#Variables input: {get_variables(formula)}")
-    print(f"#Atoms input: {get_atoms(formula)}")
-    print(f"#Variables output: {get_variables(r)}")
-    print(f"#Atoms output: {get_atoms(r)}")
-
-
+def run_benchmark(formula: ExtendedFNode):
+    stats = {}
+    
+    # Measure elimination
+    with Timer() as elim_timer, SuspendTypeChecking():
+        r = full_ramsey_elimination_int(formula)
+    stats['elim_time'] = elim_timer.interval * 1000  # ms
+    
+    # Record formula metrics
+    stats['in_vars'] = get_variables(formula)
+    stats['in_atoms'] = get_atoms(formula)
+    stats['out_vars'] = get_variables(r)
+    stats['out_atoms'] = get_atoms(r)
+    
+    # Measure solving if enabled
     if ELIMINATE_AND_SOLVE:
-        with Timer("Solving: "):
+        with Timer() as solve_timer:
             sat = is_sat(r)
-            print(sat)
+        stats['solve_time'] = solve_timer.interval * 1000  # ms
+        stats['sat'] = sat
+    else:
+        stats['solve_time'] = None
+        stats['sat'] = None
+        
+    return stats
 
-def format_arg(arg, max_len=50):
+def format_arg(arg, max_len=20):
     """Format an argument with truncation for long representations"""
     s = str(arg)
     if len(s) > max_len:
         return s[:max_len-3] + '...'
     return s
 
-def format_args(args, max_len=50):
+def format_args(args, max_len=20):
     """Format a tuple of arguments with truncation"""
+    if not args:
+        return "()"
     return '(' + ', '.join(format_arg(a, max_len) for a in args) + ')'
 
 # Collect all benchmark functions whose names end with '_int'
@@ -116,20 +133,23 @@ def get_benchmark_functions(module):
             funcs.append((name, obj))
     return funcs
 
+def format_table_row(values, widths):
+    return "| " + " | ".join(f"{str(val):<{widths[i]}}" for i, val in enumerate(values)) + " |"
+
+def format_header_separator(widths):
+    return "|-" + "-|-".join("-" * w for w in widths) + "-|"
+
 def run_all_benchmarks(module, arg_map=None):
     bench_funcs = get_benchmark_functions(module)
-
+    results = []
+    
     for name, func in bench_funcs:
-        reset_env()
-        sig = inspect.signature(func)
-        arg_sets = []
-
         if arg_map and name in arg_map:
             arg_sets = arg_map[name]
         else:
-            print(f"Skipping {name}: requires {len(sig.parameters)} args but no mapping provided.")
+            print(f"Skipping {name}: no argument mapping provided.")
             continue
-
+            
         for args in arg_sets:
             if not isinstance(args, tuple):
                 args = (args,)
@@ -139,16 +159,78 @@ def run_all_benchmarks(module, arg_map=None):
             print(f"--- Running {name}{formatted_args} ---")
             
             try:
-                func(*args)
+                reset_env()
+                formula = func(*args)
+                stats = run_benchmark(formula)
+                
+                # Add benchmark info to stats
+                stats['name'] = name
+                stats['args'] = formatted_args
+                results.append(stats)
+                
             except Exception as e:
                 print(f"Error in {name}{formatted_args}: {e}")
                 continue
+                
+    # Print summary table
+    headers = [
+        'Benchmark', 'Arguments', 
+        'Elim (ms)', 'Solve (ms)', 
+        'SAT', 
+        'In Vars', 'In Atoms', 
+        'Out Vars', 'Out Atoms'
+    ]
+    
+    # Calculate column widths
+    col_widths = [len(h) for h in headers]
+    for stats in results:
+        values = [
+            stats['name'],
+            stats['args'],
+            f"{stats['elim_time']:.2f}",
+            f"{stats['solve_time']:.2f}" if stats['solve_time'] is not None else 'N/A',
+            str(stats['sat']) if stats['sat'] is not None else 'N/A',
+            str(stats['in_vars']),
+            str(stats['in_atoms']),
+            str(stats['out_vars']),
+            str(stats['out_atoms'])
+        ]
+        for i, val in enumerate(values):
+            col_widths[i] = max(col_widths[i], len(str(val)))
+    
+    # Add some padding
+    col_widths = [w + 2 for w in col_widths]
+    
+    # Print table header
+    print("\n" + "="*80)
+    print("BENCHMARK SUMMARY")
+    print("="*80)
+    print(format_table_row(headers, col_widths))
+    print(format_header_separator(col_widths))
+    
+    # Print table rows
+    for stats in results:
+        values = [
+            stats['name'],
+            stats['args'],
+            f"{stats['elim_time']:.2f}",
+            f"{stats['solve_time']:.2f}" if stats['solve_time'] is not None else 'N/A',
+            str(stats['sat']) if stats['sat'] is not None else 'N/A',
+            stats['in_vars'],
+            stats['in_atoms'],
+            stats['out_vars'],
+            stats['out_atoms']
+        ]
+        print(format_table_row(values, col_widths))
+    
+    print("="*80)
+    print(f"Total benchmarks: {len(results)}")
+    print("="*80)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run int benchmarks from a given module.")
     parser.add_argument("module", help="Module name containing benchmark functions (e.g. int_benchmarks)")
     args = parser.parse_args()
-
 
     try:
         benchmark_module = importlib.import_module(args.module)
@@ -175,7 +257,7 @@ if __name__ == '__main__':
         'benchmark_sum_zero_hyperplane': [(1000,)],           # dim=1000
         'benchmark_diff_set': [(1000, [(0,)*1000, (1,)+(0,)*999])],  # dim=1000, D={0, e1}
         'benchmark_scheduling_overlap': [(2,)],              # Fixed dim=2
-        'benchmark_multi_resource_scheduling': [(1000, 998)], # dim=1000, n_resources=998
+        #'benchmark_multi_resource_scheduling': [(1000, 998)], # dim=1000, n_resources=998
         'benchmark_divisibility_by_k': [(1000, 4)],          # dim=1000, k=4
         'benchmark_affine_progression': [(1000, [1]*1000)],   # dim=1000, v=all-ones
         'benchmark_matrix_kernel': [(1000, [[1]*1000])],      # dim=1000, A=all-ones row
@@ -190,5 +272,4 @@ if __name__ == '__main__':
     }
 
     ELIMINATE_AND_SOLVE = True
-
     run_all_benchmarks(benchmark_module, args_map)
