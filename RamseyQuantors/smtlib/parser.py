@@ -2,6 +2,54 @@ import functools
 from pysmt.smtlib.parser import SmtLibParser
 from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_QUANTIFIER_NAME
 
+def open_(fname):
+    """Transparently handle .bz2 files."""
+    if fname.endswith(".bz2"):
+        import bz2
+        return bz2.open(fname, "rt")
+    return open(fname)
+
+
+def get_formula(script_stream, environment=None):
+    """
+    Returns the formula asserted at the end of the given script
+
+    script_stream is a file descriptor.
+    """
+    mgr = None
+    if environment is not None:
+        mgr = environment.formula_manager
+
+    parser = ExtendedSmtLibParser(environment)
+    script = parser.get_script(script_stream)
+    return script.get_last_formula(mgr)
+
+
+def get_formula_strict(script_stream, environment=None):
+    """Returns the formula defined in the SMTScript.
+
+    This function assumes that only one formula is defined in the
+    SMTScript. It will raise an exception if commands such as pop and
+    push are present in the script, or if check-sat is called more
+    than once.
+    """
+    mgr = None
+    if environment is not None:
+        mgr = environment.formula_manager
+
+    parser = ExtendedSmtLibParser(environment)
+    script = parser.get_script(script_stream)
+    return script.get_strict_formula(mgr)
+
+
+def get_formula_fname(script_fname, environment=None, strict=True):
+    """Returns the formula asserted at the end of the given script."""
+    with open_(script_fname) as script:
+        if strict:
+            return get_formula_strict(script, environment)
+        else:
+            return get_formula(script, environment)
+
 class ExtendedSmtLibParser(SmtLibParser):
     def __init__(self, environment=None, interactive=False):
         super().__init__(environment, interactive)

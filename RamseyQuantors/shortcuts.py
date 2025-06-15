@@ -1,4 +1,5 @@
 from pysmt.shortcuts import *
+import RamseyQuantors.smtlib.parser
 
 def Ramsey(vv1, vv2, formula):
     """
@@ -19,3 +20,17 @@ def Ramsey(vv1, vv2, formula):
 def Mod(left, right):
     r""".. math:: l % r """
     return get_env().formula_manager.Mod(left, right)
+
+
+def read_smtlib(fname):
+    """Reads the SMT formula from the given file.
+
+    This supports compressed files, if the fname ends in .bz2 .
+
+    :param fname: Specify the filename
+    :returns: An SMT formula
+    :rtype: FNode
+    """
+
+    return RamseyQuantors.smtlib.parser.get_formula_fname(fname)
+
