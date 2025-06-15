@@ -1,5 +1,5 @@
 from pysmt.environment import Environment, push_env
-from pysmt.oracles import FreeVarsOracle
+from pysmt.oracles import FreeVarsOracle, QuantifierOracle, TheoryOracle
 from pysmt.walkers import DagWalker
 from pysmt.walkers.dag import Walker
 
@@ -22,6 +22,9 @@ class RamseyEnvironment(Environment):
 
         self.add_dynamic_walker_function(RAMSEY_NODE_TYPE, FreeVarsOracle, custom_walkers.free_variables_walk_ramsey)
         self.add_dynamic_walker_function(MOD_NODE_TYPE, FreeVarsOracle, FreeVarsOracle.walk_simple_args)
+
+        self.add_dynamic_walker_function(MOD_NODE_TYPE, QuantifierOracle, QuantifierOracle.walk_all)
+        self.add_dynamic_walker_function(MOD_NODE_TYPE, TheoryOracle, custom_walkers.theory_walk_mod)
 
 def push_ramsey():
     env = RamseyEnvironment()
