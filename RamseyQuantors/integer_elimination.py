@@ -52,7 +52,7 @@ def eliminate_integer_existential_quantifiers(formula: ExtendedFNode) -> Extende
     new_y = y + w1 + w2
 
     #Ensure pairwise distinct subclique
-    pairwise_distinct = Or([Or(x[i] < y[i], y[i] < x[i]) for i in range(len(x))])
+    pairwise_distinct = Or([Or(LT(x[i], y[i]), LT(y[i], x[i])) for i in range(len(x))])
 
     # Create a new Ramsey quantifier now with the substituted formula, the pairwise distinctnes and the two new vectors of bound variables
     return Ramsey(new_x, new_y, And(substituted_formula, pairwise_distinct))
