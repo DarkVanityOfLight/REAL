@@ -19,3 +19,10 @@ def theory_walk_mod(self, formula, args, **kwargs):
 
     theory_out = theory_out.set_difference_logic(False)
     return theory_out
+
+
+def size_walk_general_delegate(self, formula, args, measure, **kwargs):
+    # look up the right built‑in function in SizeOracle.measure_to_fun
+    f = self.measure_to_fun[measure]
+    # call it (all built‑ins accept **kwargs, so passing `measure` is fine)
+    return f(formula, args, measure=measure, **kwargs)
