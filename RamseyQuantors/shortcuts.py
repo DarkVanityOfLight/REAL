@@ -1,5 +1,6 @@
 from pysmt.shortcuts import *
 import RamseyQuantors.smtlib.parser
+import RamseyQuantors.smtlib.printers
 
 def Ramsey(vv1, vv2, formula):
     """
@@ -33,4 +34,16 @@ def read_smtlib(fname):
     """
 
     return RamseyQuantors.smtlib.parser.get_formula_fname(fname)
+
+def to_smtlib(formula, daggify=True):
+    """Returns a Smt-Lib string representation of the formula.
+
+    The daggify parameter can be used to switch from a linear-size
+    representation that uses 'let' operators to represent the
+    formula as a dag or a simpler (but possibly exponential)
+    representation that expands the formula as a tree.
+
+    See :py:class:`SmtPrinter`
+    """
+    return RamseyQuantors.smtlib.printers.to_smtlib(formula, daggify=daggify)
 

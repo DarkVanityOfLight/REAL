@@ -16,7 +16,7 @@ from pysmt.solvers.z3 import Z3Solver
 
 from RamseyQuantors.fnode import ExtendedFNode
 from RamseyQuantors.integer_elimination import full_ramsey_elimination_int
-from RamseyQuantors.formula_utils import isAtom
+from RamseyQuantors.formula_utils import is_atom
 
 global ELIMINATE_AND_SOLVE
 ELIMINATE_AND_SOLVE = True
@@ -77,7 +77,7 @@ def get_atoms(formula: ExtendedFNode) -> int:
     seen = set()
 
     def walk(node):
-        if isAtom(node):
+        if is_atom(node):
             seen.add(node)
             return
         for arg in node.args():

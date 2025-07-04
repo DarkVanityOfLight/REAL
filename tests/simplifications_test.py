@@ -3,7 +3,7 @@ import pytest
 from pysmt.shortcuts import Equals, Int, Symbol, And, Or, ForAll, Exists, LT, LE, GT, Implies, Iff, Not, Times, Plus, get_env
 from pysmt.typing import BOOL, INT
 import pysmt.operators as operators
-from RamseyQuantors.formula_utils import isAtom, apply_to_atoms
+from RamseyQuantors.formula_utils import is_atom, apply_to_atoms
 from RamseyQuantors.shortcuts import Mod
 from RamseyQuantors.simplifications import (
     arithmetic_solver,
@@ -39,7 +39,7 @@ def test_arithmetic_solver_simple():
     # constant part: right_const - left_const
     assert const == 6
 
-# --- Tests for isAtom and apply_to_atoms on mixed formulas ---
+# --- Tests for is_atom and apply_to_atoms on mixed formulas ---
 
 def test_apply_to_atoms_ignores_non_atoms():
     # Arithmetic term is not treated as atom
@@ -49,11 +49,11 @@ def test_apply_to_atoms_ignores_non_atoms():
     assert out.node_type() == operators.PLUS and set(out.args()) == {x, y}
 
 
-def test_isAtom_various():
-    assert isAtom(Equals(x, y))
-    assert isAtom(LT(a, Int(0)))
-    assert not isAtom(Plus(x, y))
-    assert not isAtom(And(Equals(x, y), LT(x, y)))
+def test_is_atom_various():
+    assert is_atom(Equals(x, y))
+    assert is_atom(LT(a, Int(0)))
+    assert not is_atom(Plus(x, y))
+    assert not is_atom(And(Equals(x, y), LT(x, y)))
 
 
 

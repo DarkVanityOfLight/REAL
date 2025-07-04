@@ -4,7 +4,7 @@ import pytest
 
 # Import the functions under test
 from RamseyQuantors.formula_utils import (
-    isAtom,
+    is_atom,
     collect_atoms,
     reconstruct_from_coeff_map,
     apply_to_atoms,
@@ -17,16 +17,16 @@ y = Symbol('y', INT)
 a = Symbol('a', INT)
 
 
-def test_isAtom_basic_relations():
+def test_is_atom_basic_relations():
     # Equality is an atom
     eq = Equals(x, y)
-    assert isAtom(eq)
+    assert is_atom(eq)
     # Less-than is an atom
     lt = LT(x, Int(5))
-    assert isAtom(lt)
+    assert is_atom(lt)
     # Negation of equality is NOT considered an atom by default
     neg_eq = Not(Equals(x, y))
-    assert not isAtom(neg_eq)
+    assert not is_atom(neg_eq)
 
 
 def test_collect_atoms_partitioning():

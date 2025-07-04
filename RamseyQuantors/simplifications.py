@@ -1,9 +1,9 @@
-from pysmt.operators import AND, EXISTS, FORALL, OR, EQUALS, PLUS, NOT, IMPLIES, IFF, TIMES, MINUS
+from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
-from pysmt.shortcuts import GT, LE, And, ForAll, Or, LT, Exists, Times, Not, Int, Plus
+from pysmt.shortcuts import FALSE, GT,TRUE, And, ForAll, Or, LT, Exists, Not, Int, Plus
 from RamseyQuantors.fnode import ExtendedFNode
 from typing import Tuple, Dict, Set
-from RamseyQuantors.formula_utils import create_node, isAtom, apply_to_atoms
+from RamseyQuantors.formula_utils import create_node
 from RamseyQuantors.operators import MOD_NODE_TYPE
 
 type SumOfTerms = Dict[ExtendedFNode, int]
@@ -90,7 +90,7 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                     return And([make_int_input_format(Not(c)) for c in sub.args()])
                 case operators.IMPLIES:
                     a, b = sub.args()
-                    return And(make_int_input_format(a), make_int_input_format(Not(b)))
+                    return Or(Not(make_int_input_format(a)), make_int_input_format(b))
                 case operators.IFF:
                     a, b = sub.args()
                     return And(
@@ -123,6 +123,11 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                         return Or(LT(lhs, rhs), GT(lhs, rhs))
                 case operators.SYMBOL:
                     return Not(sub)
+                case operators.BOOL_CONSTANT:
+                    if sub.is_true():
+                        return FALSE()
+                    else:
+                        return TRUE()
                 case _:
                     print(f"Fall through case {node}")
                     return create_node(NOT, make_int_input_format(sub), node._content.payload)

@@ -12,7 +12,7 @@ from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
 from RamseyQuantors.shortcuts import Mod
 
-def isAtom(atom: FNode) -> bool:
+def is_atom(atom: FNode) -> bool:
     """
     Check if the given node is an atom, that is an equation of the form
     ... ~ ... with ~ in { =, <, > }
@@ -73,7 +73,7 @@ def reconstruct_from_coeff_map(m: Dict[ExtendedFNode, int], constant: int) -> Ex
 
 def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
     """ Walk over the formula, preserve its logical structure and apply f to the atoms"""
-    if isAtom(formula):
+    if is_atom(formula):
         return f(formula)
     else:
         args = tuple(apply_to_atoms(arg, f) for arg in formula.args())
