@@ -93,7 +93,7 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                     return And([make_int_input_format(Not(c)) for c in sub.args()])
                 case operators.IMPLIES:
                     a, b = sub.args()
-                    return Or(Not(make_int_input_format(a)), make_int_input_format(b))
+                    return And(make_int_input_format(a), Not(make_int_input_format(b)))
                 case operators.IFF:
                     a, b = sub.args()
                     return And(
@@ -134,7 +134,14 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
                 case _:
                     print(f"Fall through case {node}")
                     return create_node(NOT, make_int_input_format(sub), node._content.payload)
+        case operators.IMPLIES:
+            return Or(make_int_input_format(Not(node.arg(0))), make_int_input_format(node.arg(1)))
 
+        case operators.IFF:
+            return And(
+                Or(make_int_input_format(Not(node.arg(0))), make_int_input_format(node.arg(1))),
+                Or(make_int_input_format(Not(node.arg(1))), make_int_input_format(node.arg(0)))
+            )
         case _:
             return create_node(typ, tuple([make_int_input_format(c) for c in node.args()]), node._content.payload)
 
