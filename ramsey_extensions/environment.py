@@ -3,10 +3,10 @@ from pysmt.oracles import FreeVarsOracle, QuantifierOracle, SizeOracle, TheoryOr
 from pysmt.walkers import DagWalker
 from pysmt.walkers.dag import Walker
 
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
-from RamseyQuantors.printers import ExtendedSerializer
-from RamseyQuantors.substituter import ExtendedMGSubstituter
-from RamseyQuantors.walkers import custom_walkers
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.printers import ExtendedSerializer
+from ramsey_extensions.substituter import ExtendedMGSubstituter
+from ramsey_extensions.walkers import custom_walkers
 
 from .type_checker import ExtendedTypeChecker
 from .formula import ExtendedFormulaManager

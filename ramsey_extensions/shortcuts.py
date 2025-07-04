@@ -1,6 +1,6 @@
 from pysmt.shortcuts import *
-import RamseyQuantors.smtlib.parser
-import RamseyQuantors.smtlib.printers
+import ramsey_extensions.smtlib.parser
+import ramsey_extensions.smtlib.printers
 
 def Ramsey(vv1, vv2, formula):
     """
@@ -33,7 +33,7 @@ def read_smtlib(fname):
     :rtype: FNode
     """
 
-    return RamseyQuantors.smtlib.parser.get_formula_fname(fname)
+    return ramsey_extensions.smtlib.parser.get_formula_fname(fname)
 
 def to_smtlib(formula, daggify=True):
     """Returns a Smt-Lib string representation of the formula.
@@ -45,5 +45,5 @@ def to_smtlib(formula, daggify=True):
 
     See :py:class:`SmtPrinter`
     """
-    return RamseyQuantors.smtlib.printers.to_smtlib(formula, daggify=daggify)
+    return ramsey_extensions.smtlib.printers.to_smtlib(formula, daggify=daggify)
 

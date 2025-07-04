@@ -1,6 +1,5 @@
 import functools
 from pysmt.smtlib.parser import SmtLibParser
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_QUANTIFIER_NAME
 
 def open_(fname):
     """Transparently handle .bz2 files."""

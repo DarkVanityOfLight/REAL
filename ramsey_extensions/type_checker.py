@@ -6,7 +6,7 @@ import pysmt.operators
 from pysmt.type_checker import SimpleTypeChecker
 from pysmt.walkers import handles
 
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedTypeChecker(SimpleTypeChecker):

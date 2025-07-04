@@ -1,10 +1,6 @@
 from io import StringIO
 
-import pysmt.operators as op
-from pysmt.environment import get_env
-from pysmt.walkers import TreeWalker, DagWalker, handles
-from pysmt.utils import quote
-from pysmt.smtlib.printers import SmtDagPrinter, SmtPrinter, write_annotations, write_annotations_dag
+from pysmt.smtlib.printers import SmtDagPrinter, SmtPrinter
 
 class ExtendedSmtPrinter(SmtPrinter):
 

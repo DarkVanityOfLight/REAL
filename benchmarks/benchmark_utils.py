@@ -5,7 +5,7 @@ from pysmt.constants import z3
 from pysmt.environment import pop_env
 from pysmt.logics import LIA
 
-from RamseyQuantors.environment import push_ramsey
+from ramsey_extensions.environment import push_ramsey
 import time
 import inspect
 import argparse
@@ -14,9 +14,9 @@ import importlib
 from pysmt.shortcuts import Portfolio, Solver, get_env, get_model, get_unsat_core, is_sat
 from pysmt.solvers.z3 import Z3Solver
 
-from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.integer_elimination import full_ramsey_elimination_int
-from RamseyQuantors.formula_utils import is_atom
+from ramsey_extensions.fnode import ExtendedFNode
+from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
+from ramsey_elimination.formula_utils import is_atom
 
 global ELIMINATE_AND_SOLVE
 ELIMINATE_AND_SOLVE = True

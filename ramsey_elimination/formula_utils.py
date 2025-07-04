@@ -1,16 +1,17 @@
+from typing import Tuple, cast, Dict
+
 from pysmt.fnode import FNode
 import pysmt.typing as typ
 import pysmt.operators as operators
-
-from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.formula import ExtendedFormulaManager
-from RamseyQuantors.operators import MOD_NODE_TYPE
-from typing import Tuple, cast, Dict
-
-from pysmt.operators import EQUALS, INT_CONSTANT, NOT, PLUS, MINUS, SYMBOL, TIMES
+from pysmt.operators import EQUALS, NOT,SYMBOL
 from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
-from RamseyQuantors.shortcuts import Mod
+from ramsey_extensions.fnode import ExtendedFNode
+from ramsey_extensions.formula import ExtendedFormulaManager
+from ramsey_extensions.operators import MOD_NODE_TYPE
+from ramsey_extensions.shortcuts import Mod
+
+
 
 def is_atom(atom: FNode) -> bool:
     """

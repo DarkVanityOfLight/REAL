@@ -3,7 +3,7 @@ from pysmt.typing import INT
 import pytest
 
 # Import the functions under test
-from RamseyQuantors.formula_utils import (
+from ramsey_elimination.formula_utils import (
     is_atom,
     collect_atoms,
     reconstruct_from_coeff_map,

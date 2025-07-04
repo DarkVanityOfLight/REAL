@@ -1,8 +1,8 @@
 from pysmt.formula import FormulaManager
 from pysmt.fnode import FNodeContent
 
-from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.fnode import ExtendedFNode
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedFormulaManager(FormulaManager):

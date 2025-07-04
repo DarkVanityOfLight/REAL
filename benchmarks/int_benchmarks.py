@@ -1,5 +1,5 @@
-from RamseyQuantors.shortcuts import *
-from RamseyQuantors.environment import push_ramsey
+from ramsey_extensions.shortcuts import *
+from ramsey_extensions.environment import push_ramsey
 
 push_ramsey()
 get_env().enable_infix_notation = True

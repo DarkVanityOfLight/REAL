@@ -3,6 +3,15 @@ from RamseyQuantors.shortcuts import *
 
 from RamseyQuantors.integer_elimination import full_ramsey_elimination_int
 
+import time
+class Timer:
+    def __init__(self, label: str):
+        self.label = label
+    def __enter__(self):
+        self.start = time.perf_counter()
+    def __exit__(self, exc_type, exc, tb):
+        elapsed = time.perf_counter() - self.start
+        print(f"[{self.label:25s}] {elapsed*1000:.2f} ms")
 
 push_ramsey()
 
@@ -26,6 +35,7 @@ def equal_exists_int(dim: int):
 
     return ref
 
+
 class SuspendTypeChecking(object):
     """Context to disable type-checking during formula creation."""
 
@@ -44,7 +54,9 @@ class SuspendTypeChecking(object):
         """Exiting the Context: Re-enable type-checking."""
         self.mgr._do_type_check = self.mgr._do_type_check_real
 
-f = equal_exists_int(1)
+f = equal_exists_int(1000)
 #print(f.serialize())
-print(full_ramsey_elimination_int(f).serialize())
+with SuspendTypeChecking():
+    with Timer("Full elim"):
+        full_ramsey_elimination_int(f)
 

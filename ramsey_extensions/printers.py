@@ -1,7 +1,7 @@
 from pysmt.printers import HRPrinter, HRSerializer
 from pysmt.exceptions import PysmtTypeError
 
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedPrinter(HRPrinter):

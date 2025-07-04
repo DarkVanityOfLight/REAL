@@ -1,11 +1,13 @@
-
 import pytest
+
 from pysmt.shortcuts import Equals, Int, Symbol, And, Or, ForAll, Exists, LT, LE, GT, Implies, Iff, Not, Times, Plus, get_env
 from pysmt.typing import BOOL, INT
 import pysmt.operators as operators
-from RamseyQuantors.formula_utils import is_atom, apply_to_atoms
-from RamseyQuantors.shortcuts import Mod
-from RamseyQuantors.simplifications import (
+
+from ramsey_extensions.shortcuts import Mod
+
+from ramsey_elimination.formula_utils import is_atom, apply_to_atoms
+from ramsey_elimination.simplifications import (
     arithmetic_solver,
     make_int_input_format,
 )

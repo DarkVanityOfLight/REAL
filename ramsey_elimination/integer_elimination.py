@@ -1,15 +1,15 @@
+from typing import Dict, Tuple, cast
+
 from pysmt.operators import EQUALS, NOT
 from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE, Times
 from pysmt.typing import INT, BOOL
-from RamseyQuantors.fnode import ExtendedFNode
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
-from typing import Dict, Tuple, cast
+from ramsey_extensions.fnode import ExtendedFNode
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.shortcuts import Mod, Ramsey
 
-from RamseyQuantors.shortcuts import Mod, Ramsey
-from RamseyQuantors.simplifications import arithmetic_solver, make_int_input_format, apply_subst
-
-from RamseyQuantors.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map, ensure_mod
+from ramsey_elimination.simplifications import arithmetic_solver, make_int_input_format, apply_subst
+from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map, ensure_mod
 
 
 def _create_integer_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
@@ -254,8 +254,8 @@ def full_ramsey_elimination_int(formula: ExtendedFNode):
 
 
 if __name__ == "__main__":
-    from RamseyQuantors.environment import push_ramsey
-    from RamseyQuantors.shortcuts import *
+    from ramsey_extensions.environment import push_ramsey
+    from ramsey_extensions.shortcuts import *
 
     push_ramsey()
     get_env().enable_infix_notation = True

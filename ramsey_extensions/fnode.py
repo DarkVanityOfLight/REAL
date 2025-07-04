@@ -2,8 +2,8 @@ from typing import Self, Tuple
 from pysmt.fnode import FNode
 import pysmt.environment
 
-import RamseyQuantors.smtlib.printers
-from RamseyQuantors.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+import ramsey_extensions.smtlib.printers
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
 
 class ExtendedFNode(FNode):
@@ -54,7 +54,7 @@ class ExtendedFNode(FNode):
 
         See :py:class:`SmtPrinter`
         """
-        return RamseyQuantors.smtlib.printers.to_smtlib(self, daggify)
+        return ramsey_extensions.smtlib.printers.to_smtlib(self, daggify)
 
 
 def _env():
