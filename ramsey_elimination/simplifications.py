@@ -1,10 +1,13 @@
+from typing import Tuple, Dict, Set
+
 from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
 from pysmt.shortcuts import FALSE, GT,TRUE, And, ForAll, Or, LT, Exists, Not, Int, Plus
-from RamseyQuantors.fnode import ExtendedFNode
-from typing import Tuple, Dict, Set
-from RamseyQuantors.formula_utils import create_node
-from RamseyQuantors.operators import MOD_NODE_TYPE
+
+from ramsey_extensions.fnode import ExtendedFNode
+from ramsey_extensions.operators import MOD_NODE_TYPE
+
+from ramsey_elimination.formula_utils import create_node
 
 type SumOfTerms = Dict[ExtendedFNode, int]
 
