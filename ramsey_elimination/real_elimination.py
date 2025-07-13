@@ -7,7 +7,7 @@ from pysmt.typing import REAL, BOOL
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms,real_vector, reconstruct_from_coeff_map
-from ramsey_elimination.simplifications import apply_subst, arithmetic_solver
+from ramsey_elimination.simplifications import apply_subst, arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
 from ramsey_extensions.shortcuts import Ramsey
@@ -242,8 +242,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 def full_ramsey_elimination_real(formula: ExtendedFNode):
     assert formula.is_ramsey()
 
-    # TODO: Make real input formula aka just expand logical connectives
-    f = formula
+    f = make_real_input_format(formula)
 
     # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
     if formula.arg(0).is_exists():
