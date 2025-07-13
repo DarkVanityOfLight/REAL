@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, Set
+from typing import Mapping, Tuple, Dict, Set, Union
 
 from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
@@ -9,50 +9,56 @@ from ramsey_extensions.operators import MOD_NODE_TYPE
 
 from ramsey_elimination.formula_utils import create_node
 
-type SumOfTerms = Dict[ExtendedFNode, int]
+type SumOfTerms = Mapping[ExtendedFNode, Union[int, float]]
+type Numeric = Union[int, float]
 
-def arithmetic_solver(left: SumOfTerms, left_const: int,
-                      right:SumOfTerms, right_const: int,
-                      vars: Set[ExtendedFNode]) -> Tuple[SumOfTerms, SumOfTerms, int]:
+def arithmetic_solver(
+    left: SumOfTerms, left_const: Numeric,
+    right: SumOfTerms, right_const: Numeric,
+    vars: Set[ExtendedFNode]
+) -> Tuple[SumOfTerms, SumOfTerms, Numeric]:
     """
-    Solve an sum of products for a list of variables.
-    Returns the left side only containing vars and their coefficients,
-    and the right side with vars, coefficients and a constant integer part.
+    Solve a linear equation for a set of variables:
+      left * x + left_const = right * x + right_const
+
+    Returns:
+      (new_left, new_right, const) such that
+        new_left * x = new_right * x + const
     """
+    assert isinstance(vars, set)
 
-    assert isinstance(vars, set) # Sets speed up the process alot so make sure we get a set
-
+    # Split terms: keep vars on LHS, move others to RHS
     Lw, Lo = {}, {}
-    for k, v in left.items():
-        if k in vars:
-            Lw[k] = v
+    for sym, coeff in left.items():
+        if sym in vars:
+            Lw[sym] = coeff
         else:
-            Lo[k] = -v # Is moved to the other side so substracted
+            Lo[sym] = -coeff
 
     Rw, Ro = {}, {}
-    for k, v in right.items():
-        if k in vars:
-            Rw[k] = -v # Is moved to the other side so substracted
+    for sym, coeff in right.items():
+        if sym in vars:
+            Rw[sym] = -coeff
         else:
-            Ro[k] = v
+            Ro[sym] = coeff
 
-    # Move all variables with vars to the left
-    new_left = {}
-    for k, v in Lw.items():
-        new_left[k] = v + Rw.pop(k, 0)
+    # Combine same-symbol terms on left
+    new_left: SumOfTerms = {}
+    for sym, coeff in Lw.items():
+        new_left[sym] = coeff + Rw.pop(sym, 0)
+    # any remaining Rw go on LHS
+    new_left |= Rw
 
-    new_left = new_left | Rw
+    # Combine non‐vars on right
+    new_right: SumOfTerms = {}
+    for sym, coeff in Ro.items():
+        new_right[sym] = coeff + Lo.pop(sym, 0)
+    new_right |= Lo
 
-    # Move all variables without vars to the right
-    new_right = {}
-    for k, v in Ro.items():
-        new_right[k] = v + Lo.pop(k, 0)
+    # Constant shift
+    const: Numeric = right_const - left_const
 
-    new_right = new_right | Lo
-
-    const = right_const - left_const
-
-    return (new_left, new_right, const)
+    return new_left, new_right, const
 
 def contains_mod(node: ExtendedFNode) -> bool:
     """Check if a node contains a modulo operation anywhere in its subtree."""
@@ -145,7 +151,7 @@ def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
         case _:
             return create_node(typ, tuple([make_int_input_format(c) for c in node.args()]), node._content.payload)
 
-def apply_subst(coeffs: Dict[ExtendedFNode, int], subst: Dict[ExtendedFNode, ExtendedFNode]) -> Dict[ExtendedFNode, int]:
+def apply_subst(coeffs: Mapping[ExtendedFNode, Union[int, float]], subst: Mapping[ExtendedFNode, ExtendedFNode]) -> Dict[ExtendedFNode, Union[int, float]]:
     """
     Apply a substitution map to a coefficient map, keeping unmapped keys.
     """

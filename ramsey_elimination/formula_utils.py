@@ -1,4 +1,4 @@
-from typing import Tuple, cast, Dict
+from typing import Callable, Mapping, Tuple, Union, cast, Dict
 
 from pysmt.fnode import FNode
 import pysmt.typing as typ
@@ -56,18 +56,21 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
 
     return tuple(eqs), tuple(modeqs), tuple(ineqs)
 
-def reconstruct_from_coeff_map(m: Dict[ExtendedFNode, int], constant: int) -> ExtendedFNode:
+def reconstruct_from_coeff_map(
+    m: Mapping[ExtendedFNode, Union[int, float]],
+    constant: Union[int, float],
+    num_ctor: Callable[[Union[int, float]], ExtendedFNode]
+) -> ExtendedFNode:
     terms = []
     for var, coeff in m.items():
         if coeff == 0:
             continue
-        # coef 1: just the variable; otherwise multiply
-        terms.append(var if coeff == 1 else Times(Int(coeff), var))
+        terms.append(var if coeff == 1 else Times(num_ctor(coeff), var))
     if constant != 0:
-        terms.append(Int(constant))
+        terms.append(num_ctor(constant))
 
     if not terms:
-        return Int(0)
+        return num_ctor(0)
     if len(terms) == 1:
         return terms[0]
     return Plus(terms)
@@ -91,94 +94,63 @@ def create_node(node_type, args, payload=None) -> ExtendedFNode:
 def combine_term_dict(dict1: Dict[ExtendedFNode, int], dict2: Dict[ExtendedFNode, int]):
     return {k: v + dict2.get(k, 0) for k, v in dict1.items()} | {k: v for k, v in dict2.items() if k not in dict1}
 
-def ast_to_terms(node: ExtendedFNode):
+def ast_to_terms(node: ExtendedFNode
+    ) -> Tuple[Dict[ExtendedFNode, Union[int, float]], Union[int, float]]:
     """
-    Convert an AST representing a linear integer expression into a mapping
+    Convert an AST representing a linear numeric expression into a mapping
     of symbolic terms to coefficients and a constant term.
 
-    Args:
-        node (ExtendedFNode): Root of the AST to process.
-
     Returns:
-        Tuple[Dict[ExtendedFNode, int], int]: A pair (terms, constant) where `terms` maps
-        each symbolic node to its integer coefficient, and `constant` is the summed
-        integer constant.
+        Tuple[Dict[ExtendedFNode, Union[int,float]], Union[int,float]]: 
+        mapping from symbol -> coeff (int or float), plus the constant.
     """
-    def process(n: ExtendedFNode) -> Tuple[Dict[ExtendedFNode, int], int]:
+    def process(n: ExtendedFNode
+        ) -> Tuple[Dict[ExtendedFNode, Union[int, float]], Union[int, float]]:
         T = n.node_type()
         match T:
-            case operators.INT_CONSTANT:
-                # For integer constants, no symbolic terms, just return its value
-                return ({}, n.constant_value())
+            case operators.INT_CONSTANT | operators.REAL_CONSTANT:
+                return {}, n.constant_value()  # constant_value() is int or float
 
             case operators.SYMBOL:
-                # Symbols represent variables; assume integer type
-                assert n.symbol_type() == typ.INT
-                # Return a single-term map: this symbol has coefficient 1
-                return ({n: 1}, 0)
+                assert n.symbol_type() in (typ.INT, typ.REAL)
+                return {n: 1}, 0
 
             case operators.PLUS:
-                # Handle addition: sum up terms and constants from all operands
-                combined_terms: Dict[ExtendedFNode, int] = {}
-                combined_const: int = 0
-
-                for term in n.args():
-                    term_terms, term_const = process(term)
-                    # Accumulate constant parts
-                    combined_const += term_const
-                    # Merge symbolic terms, adding coefficients
-                    for sym, coeff in term_terms.items():
-                        combined_terms[sym] = combined_terms.get(sym, 0) + coeff
-                return (combined_terms, combined_const)
+                terms: Dict[ExtendedFNode, Union[int,float]] = {}
+                const: Union[int,float] = 0
+                for a in n.args():
+                    tmap, c = process(a)
+                    const += c
+                    for s, co in tmap.items():
+                        terms[s] = terms.get(s, 0) + co
+                return terms, const
 
             case operators.MINUS:
-                left_terms, left_const = process(n.arg(0))
-                right_terms, right_const = process(n.arg(1))
-
-                combined_terms = {}
-
-                for sym, coeff in left_terms.items():
-                    combined_terms[sym] = coeff
-
-                for sym, coeff in right_terms.items():
-                    if sym in combined_terms:
-                        combined_terms[sym] -= coeff
-                    else:
-                        combined_terms[sym] = -coeff
-                return (combined_terms, left_const - right_const)
-
+                Lm, Lc = process(n.arg(0))
+                Rm, Rc = process(n.arg(1))
+                terms = {**Lm}
+                for s, co in Rm.items():
+                    terms[s] = terms.get(s, 0) - co
+                return terms, Lc - Rc
 
             case operators.TIMES:
-                # Handle multiplication: only allow one symbolic factor
-                product_terms: Dict[ExtendedFNode, int] = {}
-                product_const: int = 1
-
-                for term in n.args():
-                    term_terms, term_const = process(term)
-                    # Disallow multiplication of two non-constant expressions
-                    if term_terms and product_terms:
-                        raise ValueError(
-                            "Invalid multiplication of two non-constant expressions"
-                        )
-                    # Scale existing symbolic terms by the new constant
-                    new_terms: Dict[ExtendedFNode, int] = {}
-                    for sym, coeff in product_terms.items():
-                        new_terms[sym] = coeff * term_const
-
-                    # Introduce new symbolic terms scaled by the accumulated constant
-                    for sym, coeff in term_terms.items():
-                        new_coeff = coeff * product_const
-                        new_terms[sym] = new_terms.get(sym, 0) + new_coeff
-
-                    # Update constant multiplier
-                    product_const *= term_const
-                    product_terms = new_terms
-                return (product_terms, product_const)
+                terms: Dict[ExtendedFNode, Union[int,float]] = {}
+                const: Union[int,float] = 1
+                for a in n.args():
+                    tmap, c = process(a)
+                    if tmap and terms:
+                        raise ValueError("Cannot multiply two symbolic parts")
+                    # scale existing terms by c
+                    terms = {s: co * c for s, co in terms.items()}
+                    # add new term-scaled-by-const
+                    for s, co in tmap.items():
+                        terms[s] = terms.get(s, 0) + co * const
+                    const *= c
+                return terms, const
 
             case _:
-                # Catch-all for any unrecognized node types
                 raise ValueError(f"Unknown node type: {T}")
 
     terms, const = process(node)
-    # Clean 0 coeffs
+    # drop zero coefficients
     return {s: c for s, c in terms.items() if c != 0}, const

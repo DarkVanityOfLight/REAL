@@ -122,7 +122,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
         # This term captures everything not related to vars1 or vars2
         wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
-        z_and_h_terms[i] = reconstruct_from_coeff_map(wz_coeffs, const)
+        z_and_h_terms[i] = reconstruct_from_coeff_map(wz_coeffs, const, Real)
         
         # rx = sy + tz + h
         rx_coeff = apply_subst(l_coeffs, sub_x_for_var1)
@@ -133,12 +133,12 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         sx_inf_coeff = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub_x_inf_for_var2)
         sx_c_coeff = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub_x_c_for_var2)
 
-        rx = reconstruct_from_coeff_map(rx_coeff, 0)
-        rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0)
-        sx = reconstruct_from_coeff_map(sx_coeff, 0)
-        sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0)
-        rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0)
-        sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0)
+        rx = reconstruct_from_coeff_map(rx_coeff, 0, Real)
+        rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0, Real)
+        sx = reconstruct_from_coeff_map(sx_coeff, 0, Real)
+        sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0, Real)
+        rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0, Real)
+        sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0, Real)
 
         # Lambda constraints
         lambdas[i] = And(
@@ -223,12 +223,12 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
             for i, var in enumerate(vars1)
         }
 
-        ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0)
-        ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0)
-        vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0)
-        vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0)
-        u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0)
-        wz_d = reconstruct_from_coeff_map(wz_coeffs, const)
+        ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0, Real)
+        ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0, Real)
+        vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0, Real)
+        vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0, Real)
+        u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0, Real)
+        wz_d = reconstruct_from_coeff_map(wz_coeffs, const, Real)
 
         epsilons[i] = And(
             Equals(ux_c, Real(0)),
