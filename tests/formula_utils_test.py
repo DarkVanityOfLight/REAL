@@ -44,13 +44,13 @@ def test_collect_atoms_partitioning():
 
 def test_reconstruct_from_coeff_map_zero():
     # All zero coefficients and zero constant
-    empty = reconstruct_from_coeff_map({}, 0)
+    empty = reconstruct_from_coeff_map({}, 0, Int)
     assert empty.is_int_constant() and empty.constant_value() == 0
 
 
 def test_reconstruct_from_coeff_map_mixed():
     m = {x: 1, y: 2}
-    node = reconstruct_from_coeff_map(m, 3)
+    node = reconstruct_from_coeff_map(m, 3, Int)
     # Should equal Plus(x, Times(2, y), 3)
     # Check structure
     assert node.is_plus()
