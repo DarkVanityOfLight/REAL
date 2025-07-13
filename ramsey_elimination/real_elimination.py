@@ -5,6 +5,7 @@ from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
 from pysmt.typing import REAL, BOOL
 
+from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms,real_vector, reconstruct_from_coeff_map
 from ramsey_elimination.simplifications import apply_subst, arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
@@ -13,50 +14,6 @@ from ramsey_extensions.shortcuts import Ramsey
 
 def not_eq_num(left, right):
     return Or(LT(left, right), GT(left, right))
-
-def _create_real_quantifier_elimination_vars(existential_vars: Tuple[ExtendedFNode, ...]) -> Tuple[Dict[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
-    v1, v2, w1, w2 = [], [], [], []
-    substitution_map = {}
-    for i, existential_var in enumerate(existential_vars):
-        assert existential_var.is_symbol(REAL)
-        
-        v1.append(Symbol(f"v1_{i}", REAL))
-        v2.append(Symbol(f"v2_{i}", REAL))
-
-        w1.append(Symbol(f"w1_{i}", REAL))
-        w2.append(Symbol(f"w2_{i}", REAL))
-
-        substitution_map[existential_var] = Plus(v1[i], w2[i])
-
-    return (substitution_map, tuple(v1), tuple(v2), tuple(w1), tuple(w2))
-
-def eliminate_real_existential_quantifiers(formula: ExtendedFNode) -> ExtendedFNode:
-    assert formula.is_ramsey()
-    assert formula.arg(0).is_exists()
-
-    exvars = formula.arg(0).quantifier_vars()
-    substitution_map, v1, v2, w1, w2 = _create_real_quantifier_elimination_vars(exvars)
-
-    # Assume (ramsey (...) (...)  (exists (...) phi))
-    # We extract phi
-    subformula = formula.arg(0).arg(0)
-
-    # Substitute each variable x_i bound by the existential quantifier with v1_i + w2_i
-    substituted_formula = subformula.substitute(substitution_map)
-
-    # Get the current variables bound originally by the ramsey quantifier
-    x, y = cast(Tuple[Tuple[ExtendedFNode], Tuple[ExtendedFNode]], formula.quantifier_vars())
-
-    # Add the newly introduced variables
-    new_x =  x + v1 + v2
-    new_y = y + w1 + w2
-
-    #Ensure pairwise distinct subclique
-    pairwise_distinct = Or([Or(LT(x[i], y[i]), LT(y[i], x[i])) for i in range(len(x))])
-
-    # Create a new Ramsey quantifier now with the substituted formula, the pairwise distinctnes and the two new vectors of bound variables
-    return Ramsey(new_x, new_y, And(substituted_formula, pairwise_distinct))
-
 
 def make_sub(vars_list: Sequence[ExtendedFNode], symbols_list: Sequence[ExtendedFNode]) -> Dict[ExtendedFNode, ExtendedFNode]:
     """Return a dict mapping each vars_list[i] to symbols_list[i]."""
@@ -281,3 +238,15 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
     return Exists(quantified_vars, gamma_body)
 
+
+def full_ramsey_elimination_real(formula: ExtendedFNode):
+    assert formula.is_ramsey()
+
+    # TODO: Make real input formula aka just expand logical connectives
+    f = formula
+
+    # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
+    if formula.arg(0).is_exists():
+        f = eliminate_existential_quantifier(f)
+
+    return eliminate_ramsey_real(f)
