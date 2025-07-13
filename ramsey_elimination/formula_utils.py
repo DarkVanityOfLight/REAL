@@ -1,4 +1,4 @@
-from typing import Callable, Mapping, Tuple, Union, cast, Dict
+from typing import Callable, Mapping, Set, Tuple, Union, cast, Dict
 
 from pysmt.fnode import FNode
 import pysmt.typing as typ
@@ -30,10 +30,9 @@ def ensure_mod(node: ExtendedFNode, modulus: int) -> ExtendedFNode:
 def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]]:
     """Collect all atoms, returning (equalities, modequalities, inequalities)."""
 
-
-    eqs: set[ExtendedFNode] = set()
-    modeqs: set[ExtendedFNode] = set()
-    ineqs: set[ExtendedFNode] = set()
+    eqs: Set[ExtendedFNode] = set()
+    modeqs: Set[ExtendedFNode] = set()
+    ineqs: Set[ExtendedFNode] = set()
 
     stack = [formula]
     while stack:
@@ -44,7 +43,7 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
                     modeqs.add(sub)
                 else:
                     eqs.add(sub)
-            case t if t == operators.LT:
+            case t if t == operators.LT or t == operators.LE:
                 ineqs.add(sub)
             case t if t == NOT:
                 # A mod equality can appear negated, since we can not rewrite it

@@ -1,6 +1,7 @@
 
 from typing import Dict, Iterable, List, Sequence, Tuple, cast
 
+from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, NotEquals, Or, Plus, Real, Symbol
 from pysmt.typing import REAL, BOOL
 
@@ -189,14 +190,28 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
             And(Or(Equals(t_rho[i], Real(-1)), Equals(t_rho[i], Real(0))),
                 Or(Equals(t_sigma[i], Real(0)), Equals(t_sigma[i], Real(1)))),
             And(Equals(t_rho[i], Real(-1)), Equals(t_sigma[i], Real(-1))))
-        consequent1 = LT(rho[i], sigma[i] + z_and_h_terms[i])
-        theta_constraints.append(Implies(antecedent1, consequent1))
 
         antecedent2 = Or(
             And(Equals(t_rho[i], Real(0)), Equals(t_sigma[i], Real(-1))),
             Equals(t_rho[i], Real(1)))
-        consequent2 = LE(rho[i], Plus(sigma[i], z_and_h_terms[i]))
-        theta_constraints.append(Implies(antecedent2, consequent2))
+
+        ineq_type = ineq.node_type()
+        if ineq_type == operators.LT:
+            consequent1 = LT(rho[i], Plus(sigma[i], z_and_h_terms[i]))
+            consequent2 = LE(rho[i], Plus(sigma[i], z_and_h_terms[i]))
+            
+            theta_constraints.append(Implies(antecedent1, consequent1))
+            theta_constraints.append(Implies(antecedent2, consequent2))
+
+        elif ineq_type == operators.LE:
+            consequent_le = LE(rho[i], Plus(sigma[i], z_and_h_terms[i]))
+
+            theta_constraints.append(Implies(antecedent1, consequent_le))
+            theta_constraints.append(Implies(antecedent2, consequent_le))
+            
+        else:
+            # This case should not be reached if collect_atoms is correct
+            raise ValueError(f"Unexpected inequality type in loop: {ineq_type}")
 
     theta = And(theta_constraints)
     epsilons = [None] * m
