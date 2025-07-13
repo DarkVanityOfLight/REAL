@@ -11,7 +11,15 @@ from ramsey_extensions.formula import ExtendedFormulaManager
 from ramsey_extensions.operators import MOD_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod
 
+def _vector(name: str, length: int, T: typ.PySMTType):
+    return [Symbol(f"{name}_{i}", T) for i in range(length)]
 
+def real_vector(name: str, length: int):
+    return _vector(name, length, typ.REAL)
+def bool_vector(name: str, length: int):
+    return _vector(name, length, typ.BOOL)
+def int_vector(name: str, length: int):
+    return _vector(name, length, typ.INT)
 
 def is_atom(atom: FNode) -> bool:
     """

@@ -2,10 +2,10 @@
 from typing import Dict, Iterable, List, Sequence, Tuple, cast
 
 from pysmt import operators
-from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, NotEquals, Or, Plus, Real, Symbol
+from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
 from pysmt.typing import REAL, BOOL
 
-from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, reconstruct_from_coeff_map
+from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms,real_vector, reconstruct_from_coeff_map
 from ramsey_elimination.simplifications import apply_subst, arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
@@ -79,7 +79,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Boolean abstraction
     # ============================
-    qs = [Symbol(f"q_{i}", BOOL) for i in range(n + m)]
+    qs = bool_vector("q", n+m)
 
     prop_skeleton = formula.substitute({
         atom: qs[i]
@@ -89,16 +89,17 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Profile constraints
     # ============================
-    rho = [Symbol(f"rho_{i}") for i in range(n)]
-    sigma = [Symbol(f"sigma_{i}") for i in range(n)]
-    t_rho = [Symbol(f"t_rho_{i}") for i in range(n)]
-    t_sigma = [Symbol(f"t_sigma_{i}") for i in range(n)]
+    rho = real_vector("rho", n)
+    sigma = real_vector("sigma", n)
+    t_rho = real_vector("t_rho", n)
+    t_sigma = real_vector("t_sigma", n)
 
     vars1, vars2 = cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], qformula.quantifier_vars())
+    l = len(vars1)
 
-    x = [Symbol(f"x_{i}", REAL) for i in range(len(vars1))]
-    x_c = [Symbol(f"x_c_{i}", REAL) for i in range(len(vars1))]
-    x_inf = [Symbol(f"x_inf_{i}", REAL) for i in range(len(vars1))]
+    x = real_vector("x", l)
+    x_c = real_vector("x_c", l)
+    x_inf = real_vector("x_inf", l) 
 
     # Substitution maps
     sub_x_for_var1 = make_sub(vars1, x)
