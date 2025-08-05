@@ -1,16 +1,14 @@
 
-from typing import Dict, Iterable, List, Sequence, Tuple, cast
+from typing import Dict, List, Sequence, Tuple, cast
 
 from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
-from pysmt.typing import REAL, BOOL
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms,real_vector, reconstruct_from_coeff_map
 from ramsey_elimination.simplifications import apply_subst, arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
-from ramsey_extensions.shortcuts import Ramsey
 
 def not_eq_num(left, right):
     return Or(LT(left, right), GT(left, right))
@@ -192,7 +190,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
 
         u_minus_v_x_coeffs = {
-            sub_x_for_var1.get(var, var): l_coeffs[var] - v_coeffs.get(vars2[i], 0)
+            sub_x_for_var1.get(var, var): l_coeffs.get(var, 0) - v_coeffs.get(vars2[i], 0)
             for i, var in enumerate(vars1)
         }
 
