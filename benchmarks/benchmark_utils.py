@@ -1,30 +1,23 @@
-import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from pysmt.constants import z3
-from pysmt.environment import pop_env
-from pysmt.logics import LIA
-
-from ramsey_extensions.environment import push_ramsey
+import sys
+import os
 import time
 import inspect
 import argparse
 import importlib
+import csv
 
-from pysmt.shortcuts import Portfolio, Solver, get_env, get_model, get_unsat_core, is_sat
-from pysmt.solvers.z3 import Z3Solver
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from pysmt.environment import pop_env
+from pysmt.shortcuts import is_sat, get_env
+from ramsey_extensions.environment import push_ramsey
 from ramsey_extensions.fnode import ExtendedFNode
+
+from ramsey_elimination.real_elimination import full_ramsey_elimination_real
 from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
 from ramsey_elimination.formula_utils import is_atom
 
-global ELIMINATE_AND_SOLVE
-ELIMINATE_AND_SOLVE = True
-
-def reset_env():
-    pop_env()
-    push_ramsey()
-    get_env().enable_infix_notation = True
+# --- Utility Classes and Functions ---
 
 class Timer:
     def __init__(self):
@@ -41,8 +34,6 @@ class Timer:
         self.interval = self.end - self.start
 
 class SuspendTypeChecking(object):
-    """Context to disable type-checking during formula creation."""
-
     def __init__(self, env=None):
         if env is None:
             env = get_env()
@@ -50,14 +41,11 @@ class SuspendTypeChecking(object):
         self.mgr = env.formula_manager
 
     def __enter__(self):
-        """Entering a Context: Disable type-checking."""
         self.mgr._do_type_check = lambda x : x
         return self.env
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Exiting the Context: Re-enable type-checking."""
         self.mgr._do_type_check = self.mgr._do_type_check_real
-
 
 def get_variables(formula: ExtendedFNode) -> int:
     seen = set()
@@ -86,160 +74,114 @@ def get_atoms(formula: ExtendedFNode) -> int:
     walk(formula)
     return len(seen)
 
-def run_benchmark(formula: ExtendedFNode):
+def reset_env():
+    pop_env()
+    push_ramsey()
+    get_env().enable_infix_notation = True
+
+# --- Core Benchmarking Logic ---
+
+def run_benchmark(formula: ExtendedFNode, elimination_func):
+    """Runs elimination and solving for a single formula."""
     stats = {}
     
-    # Measure elimination
     with Timer() as elim_timer, SuspendTypeChecking():
-        r = full_ramsey_elimination_int(formula)
-    stats['elim_time'] = elim_timer.interval * 1000  # ms
-    
-    # Record formula metrics
+        r = elimination_func(formula)
+    stats['elim_time'] = elim_timer.interval * 1000
+
     stats['in_vars'] = get_variables(formula)
     stats['in_atoms'] = get_atoms(formula)
     stats['out_vars'] = get_variables(r)
     stats['out_atoms'] = get_atoms(r)
     
-    # Measure solving if enabled
-    if ELIMINATE_AND_SOLVE:
-        with Timer() as solve_timer:
-            sat = is_sat(r)
-        stats['solve_time'] = solve_timer.interval * 1000  # ms
-        stats['sat'] = sat
-    else:
-        stats['solve_time'] = None
-        stats['sat'] = None
+    with Timer() as solve_timer:
+        sat = is_sat(r)
+    stats['solve_time'] = solve_timer.interval * 1000
+    stats['sat'] = sat
         
     return stats
 
 def format_arg(arg, max_len=20):
-    """Format an argument with truncation for long representations"""
     s = str(arg)
-    if len(s) > max_len:
-        return s[:max_len-3] + '...'
-    return s
+    return s if len(s) <= max_len else s[:max_len-3] + '...'
 
 def format_args(args, max_len=20):
-    """Format a tuple of arguments with truncation"""
-    if not args:
-        return "()"
     return '(' + ', '.join(format_arg(a, max_len) for a in args) + ')'
 
-# Collect all benchmark functions whose names end with '_int'
 def get_benchmark_functions(module):
-    funcs = []
-    for name, obj in inspect.getmembers(module, inspect.isfunction):
-        if name.startswith('benchmark_'):
-            funcs.append((name, obj))
-    return funcs
+    return [(name, obj) for name, obj in inspect.getmembers(module, inspect.isfunction) if name.startswith('benchmark_')]
 
-def format_table_row(values, widths):
-    return "| " + " | ".join(f"{str(val):<{widths[i]}}" for i, val in enumerate(values)) + " |"
-
-def format_header_separator(widths):
-    return "|-" + "-|-".join("-" * w for w in widths) + "-|"
-
-def run_all_benchmarks(module, arg_map=None):
+def run_all_benchmarks(module, arg_map, elimination_func, title):
+    """Runs all benchmarks from a module and outputs results in CSV format."""
     bench_funcs = get_benchmark_functions(module)
     results = []
     
+    # Print status updates to stderr to keep stdout clean for CSV data
+    print(f"--- Starting {title} ---", file=sys.stderr)
+    
     for name, func in bench_funcs:
-        if arg_map and name in arg_map:
-            arg_sets = arg_map[name]
-        else:
-            print(f"Skipping {name}: no argument mapping provided.")
+        if name not in arg_map:
             continue
             
-        for args in arg_sets:
+        for args in arg_map[name]:
             if not isinstance(args, tuple):
                 args = (args,)
                 
-            # Format arguments for clean output
             formatted_args = format_args(args)
-            print(f"--- Running {name}{formatted_args} ---")
+            print(f"Running {name}{formatted_args}...", file=sys.stderr)
             
             try:
                 reset_env()
                 formula = func(*args)
-                stats = run_benchmark(formula)
-                
-                # Add benchmark info to stats
-                stats['name'] = name
+                stats = run_benchmark(formula, elimination_func)
+                stats['name'] = name.replace('benchmark_', '')
                 stats['args'] = formatted_args
                 results.append(stats)
-                
             except Exception as e:
-                print(f"Error in {name}{formatted_args}: {e}")
-                continue
+                print(f"  ERROR: {e}", file=sys.stderr)
                 
-    # Print summary table
-    headers = [
-        'Benchmark', 'Arguments', 
-        'Elim (ms)', 'Solve (ms)', 
-        'SAT', 
-        'In Vars', 'In Atoms', 
-        'Out Vars', 'Out Atoms'
-    ]
+    if not results:
+        print(f"No benchmarks were successfully run for {title}.", file=sys.stderr)
+        return
+
+    # --- CSV Output ---
+    headers = ['Benchmark', 'Arguments', 'Elim (ms)', 'Solve (ms)', 'SAT', 'In Vars', 'In Atoms', 'Out Vars', 'Out Atoms']
     
-    # Calculate column widths
-    col_widths = [len(h) for h in headers]
+    # Use the csv module to write to standard output
+    writer = csv.writer(sys.stdout)
+    
+    # Write header row
+    writer.writerow(headers)
+    
+    # Write data rows
     for stats in results:
-        values = [
+        writer.writerow([
             stats['name'],
             stats['args'],
             f"{stats['elim_time']:.2f}",
-            f"{stats['solve_time']:.2f}" if stats['solve_time'] is not None else 'N/A',
-            str(stats['sat']) if stats['sat'] is not None else 'N/A',
-            str(stats['in_vars']),
-            str(stats['in_atoms']),
-            str(stats['out_vars']),
-            str(stats['out_atoms'])
-        ]
-        for i, val in enumerate(values):
-            col_widths[i] = max(col_widths[i], len(str(val)))
-    
-    # Add some padding
-    col_widths = [w + 2 for w in col_widths]
-    
-    # Print table header
-    print("\n" + "="*80)
-    print("BENCHMARK SUMMARY")
-    print("="*80)
-    print(format_table_row(headers, col_widths))
-    print(format_header_separator(col_widths))
-    
-    # Print table rows
-    for stats in results:
-        values = [
-            stats['name'],
-            stats['args'],
-            f"{stats['elim_time']:.2f}",
-            f"{stats['solve_time']:.2f}" if stats['solve_time'] is not None else 'N/A',
-            str(stats['sat']) if stats['sat'] is not None else 'N/A',
+            f"{stats['solve_time']:.2f}",
+            stats['sat'],
             stats['in_vars'],
             stats['in_atoms'],
             stats['out_vars'],
             stats['out_atoms']
-        ]
-        print(format_table_row(values, col_widths))
-    
-    print("="*80)
-    print(f"Total benchmarks: {len(results)}")
-    print("="*80)
+        ])
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run int benchmarks from a given module.")
-    parser.add_argument("module", help="Module name containing benchmark functions (e.g. int_benchmarks)")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Run Ramsey elimination benchmarks from a specific module.")
+    parser.add_argument("module", help="Name of the benchmark module to run (e.g., 'real_benchmarks' or 'int_benchmarks')")
+    cmd_args = parser.parse_args()
 
-    try:
-        benchmark_module = importlib.import_module(args.module)
-    except ModuleNotFoundError:
-        print(f"Error: Module '{args.module}' not found.")
-        sys.exit(1)
+    # --- Define Argument Maps ---
+    # Argument mapping for REAL benchmarks
+    args_map_real = {
+        'benchmark_half_real': [(1000, 5.0)],
+        'benchmark_equal_exists_real': [(1000,)],
+        'benchmark_equal_free_real': [(1000,)],
+        'benchmark_dickson_real': [(1000,)],
+    }
 
-    # Example argument mapping
-    args_map = {
+    args_map_int = {
         # Original benchmarks
         'benchmark_half_int': [(1000, 50)],
         'benchmark_equal_exists_int': [(1000,)],
@@ -271,5 +213,32 @@ if __name__ == '__main__':
         'benchmark_mixed_sign_pair': [(1000,)]               # dim=1000 (n=500 pairs)
     }
 
-    ELIMINATE_AND_SOLVE = True
-    run_all_benchmarks(benchmark_module, args_map)
+# --- Select Benchmark Suite Based on Command-Line Argument ---
+    try:
+        # To handle file paths correctly, we'll assume the module is in the current directory
+        module_path = cmd_args.module.replace('.py', '')
+        benchmark_module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        print(f"Error: Module '{cmd_args.module}' not found in the search path.", file=sys.stderr)
+        sys.exit(1)
+
+    # Determine which elimination function and argument map to use
+    if 'real' in cmd_args.module:
+        elimination_function = full_ramsey_elimination_real
+        argument_map = args_map_real
+        suite_title = "REAL BENCHMARKS"
+    elif 'int' in cmd_args.module:
+        elimination_function = full_ramsey_elimination_int
+        argument_map = args_map_int
+        suite_title = "INTEGER BENCHMARKS"
+    else:
+        print(f"Error: Cannot determine theory for module '{cmd_args.module}'. Name must contain 'real' or 'int'.", file=sys.stderr)
+        sys.exit(1)
+
+    # --- Run the Selected Benchmarks ---
+    run_all_benchmarks(
+        module=benchmark_module,
+        arg_map=argument_map,
+        elimination_func=elimination_function,
+        title=suite_title
+    )
