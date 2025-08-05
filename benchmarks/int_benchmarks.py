@@ -1,12 +1,5 @@
+from ramsey_elimination.formula_utils import int_vector
 from ramsey_extensions.shortcuts import *
-from ramsey_extensions.environment import push_ramsey
-
-push_ramsey()
-get_env().enable_infix_notation = True
-
-
-def int_vector(name, dim):
-    return [Symbol(f"{name}_{i}", INT) for i in range(dim)]
 
 def benchmark_half_int(dim: int, bound: int):
     x = int_vector("a", dim)
