@@ -1,3 +1,4 @@
+from pysmt import formula
 from pysmt.printers import HRPrinter, HRSerializer
 from pysmt.exceptions import PysmtTypeError
 
@@ -48,6 +49,11 @@ class ExtendedPrinter(HRPrinter):
         self.write(")")
 
     def walk_mod(self, formula): return self.walk_nary(formula, " mod ")
+
+    def walk_toint(self, formula):
+        self.write("(to_int ")
+        yield formula.arg(0)
+        self.write(")")
 
 class ExtendedSerializer(HRSerializer):
     """

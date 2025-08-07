@@ -6,7 +6,7 @@ import pysmt.operators
 from pysmt.type_checker import SimpleTypeChecker
 from pysmt.walkers import handles
 
-from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE, TOINT_NODE_TYPE
 
 
 class ExtendedTypeChecker(SimpleTypeChecker):
@@ -58,3 +58,8 @@ class ExtendedTypeChecker(SimpleTypeChecker):
     def walk_mod(self, formula, args, **kwargs):
         assert formula.arg(1).node_type() == INT_CONSTANT
         return self.walk_type_to_type(formula, args, INT, INT)
+
+    @handles(TOINT_NODE_TYPE)
+    def walk_real_to_int(self, formula, args, **kwargs):
+        # pylint: disable=unused-argument
+        return self.walk_type_to_type(formula, args, REAL, INT)

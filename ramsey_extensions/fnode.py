@@ -3,7 +3,7 @@ from pysmt.fnode import FNode
 import pysmt.environment
 
 import ramsey_extensions.smtlib.printers
-from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE, TOINT_NODE_TYPE
 
 
 class ExtendedFNode(FNode):
@@ -16,6 +16,14 @@ class ExtendedFNode(FNode):
     def is_ramsey(self) -> bool:
         """Return True if this node is a Ramsey quantifier."""
         return self.node_type() == RAMSEY_NODE_TYPE
+
+    def is_mod(self) -> bool:
+        """Return True if this node is a Modulo operator."""
+        return self.node_type() == MOD_NODE_TYPE
+
+    def is_toint(self) -> bool:
+        """Return True if this node is a Modulo operator."""
+        return self.node_type() == TOINT_NODE_TYPE
 
     def is_quantifier(self) -> bool:
         """Return True if this node is any quantifier (exists, forall, or Ramsey)."""
@@ -35,10 +43,6 @@ class ExtendedFNode(FNode):
 
         # For standard quantifiers, payload is a sequence of FNode
         return tuple(payload)
-
-    def is_mod(self) -> bool:
-        """Return True if this node is a Modulo operator."""
-        return self.node_type() == MOD_NODE_TYPE
 
     def __mod__(self, right):
         return self._apply_infix(right, _mgr().Mod, _mgr().BVURem)

@@ -3,7 +3,7 @@ from pysmt.oracles import FreeVarsOracle, QuantifierOracle, SizeOracle, TheoryOr
 from pysmt.walkers import DagWalker
 from pysmt.walkers.dag import Walker
 
-from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.printers import ExtendedSerializer
 from ramsey_extensions.substituter import ExtendedMGSubstituter
 from ramsey_extensions.walkers import custom_walkers
@@ -22,12 +22,19 @@ class RamseyEnvironment(Environment):
 
         self.add_dynamic_walker_function(RAMSEY_NODE_TYPE, FreeVarsOracle, custom_walkers.free_variables_walk_ramsey)
         self.add_dynamic_walker_function(MOD_NODE_TYPE, FreeVarsOracle, FreeVarsOracle.walk_simple_args)
+        self.add_dynamic_walker_function(TOINT_NODE_TYPE, FreeVarsOracle, FreeVarsOracle.walk_simple_args)
+
         self.add_dynamic_walker_function(RAMSEY_NODE_TYPE, QuantifierOracle, QuantifierOracle.walk_true)
         self.add_dynamic_walker_function(MOD_NODE_TYPE, QuantifierOracle, QuantifierOracle.walk_all)
+        self.add_dynamic_walker_function(TOINT_NODE_TYPE, QuantifierOracle, QuantifierOracle.walk_all)
+
         # No ramsey for theory
         self.add_dynamic_walker_function(MOD_NODE_TYPE, TheoryOracle, custom_walkers.theory_walk_mod)
+        self.add_dynamic_walker_function(TOINT_NODE_TYPE, TheoryOracle, TheoryOracle.walk_toreal) # This actually walks to LIRA
+
         self.add_dynamic_walker_function(MOD_NODE_TYPE, SizeOracle, custom_walkers.size_walk_general_delegate)
         self.add_dynamic_walker_function(RAMSEY_NODE_TYPE, SizeOracle, custom_walkers.size_walk_general_delegate)
+        self.add_dynamic_walker_function(TOINT_NODE_TYPE, SizeOracle, custom_walkers.size_walk_general_delegate)
 
 def push_ramsey():
     env = RamseyEnvironment()

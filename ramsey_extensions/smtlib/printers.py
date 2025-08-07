@@ -8,6 +8,7 @@ class ExtendedSmtPrinter(SmtPrinter):
         super().__init__(stream, annotations)
 
     def walk_mod(self, formula): return self.walk_nary(formula, "mod")
+    def walk_toint(self, formula): return self.walk_nary(formula, "to_int")
 
 class ExtendedSmtDagPrinter(SmtDagPrinter):
 
@@ -16,6 +17,8 @@ class ExtendedSmtDagPrinter(SmtDagPrinter):
 
     def walk_mod(self, formula, args):
         return self.walk_nary(formula, args, "mod")
+
+    def walk_toint(self, formula, args): return self.walk_nary(formula, args, "to_int")
 
 def to_smtlib(formula, daggify=True):
     """Returns a Smt-Lib string representation of the formula.

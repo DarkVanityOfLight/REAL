@@ -1,6 +1,9 @@
-from pysmt.formula import FormulaManager
+from typing import no_type_check
+from pysmt import typing
+from pysmt.formula import FormulaManager, PysmtTypeError
 from pysmt.fnode import FNodeContent
 
+from ramsey_extensions import operators
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 
@@ -69,3 +72,17 @@ class ExtendedFormulaManager(FormulaManager):
             node_type=MOD_NODE_TYPE,
             args=(left, right))
 
+    def ToInt(self, formula):
+        """ Cast a formula to int type. """
+        t = self.env.stc.get_type(formula)
+        if t == typing.INT:
+            # Ignore casting of an Int
+            return formula
+        elif t == typing.REAL:
+            if formula.is_real_constant():
+                return self.Int(int(formula.constant_value()))
+            return self.create_node(node_type=operators.TOINT_NODE_TYPE,
+                                    args=(formula,))
+        else:
+            raise PysmtTypeError("Argument is of type %s, but REAL was "
+                                "expected!\n" % t)

@@ -9,3 +9,9 @@ class ExtendedMGSubstituter(MGSubstituter):
             res = self.mgr.Mod(args[0], args[1])
         return res
 
+    def walk_toint(self, formula, args, **kwargs):
+        substitutions = kwargs['substitutions']
+        res = substitutions.get(formula, None)
+        if res is None:
+            res = self.mgr.ToInt(args[0])
+        return res

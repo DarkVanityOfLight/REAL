@@ -54,6 +54,7 @@ class ExtendedSmtLibParser(SmtLibParser):
         super().__init__(environment, interactive)
         self.interpreted["ramsey"] = self._enter_ramsey
         self.interpreted["mod"] = self._operator_adapter(self._modulo)
+        self.interpreted["to_int"] = self._operator_adapter(self._to_int)
 
 
     def _enter_ramsey(self, stack, tokens, key):
@@ -110,3 +111,6 @@ class ExtendedSmtLibParser(SmtLibParser):
 
     def _modulo(self, left, right):
         return self.env.formula_manager.Mod(left, right)
+
+    def _to_int(self, arg):
+        return self.env.formula_manager.ToInt(arg)

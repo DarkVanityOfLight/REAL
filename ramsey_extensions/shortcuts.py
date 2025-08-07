@@ -22,6 +22,9 @@ def Mod(left, right):
     r""".. math:: l % r """
     return get_env().formula_manager.Mod(left, right)
 
+def ToInt(formula):
+    return get_env().formula_manager.ToInt(formula)
+
 
 def read_smtlib(fname):
     """Reads the SMT formula from the given file.
