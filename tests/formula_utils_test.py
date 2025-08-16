@@ -7,7 +7,7 @@ from ramsey_elimination.formula_utils import (
     is_atom,
     collect_atoms,
     reconstruct_from_coeff_map,
-    apply_to_atoms,
+    map_atoms,
     ast_to_terms
 )
 
@@ -63,7 +63,7 @@ def test_reconstruct_from_coeff_map_mixed():
 def test_apply_to_atoms_replaces_atoms():
     # And(x < 5, Equals(y, 1), Plus(x,y) > Int(0))
     f = And(LT(x, Int(5)), Equals(y, Int(1)), LT(Plus(x, y), Int(0)))
-    transformed = apply_to_atoms(f, lambda atm: Equals(Int(42), Int(42)))
+    transformed = map_atoms(f, lambda atm: Equals(Int(42), Int(42)))
     # All atoms replaced by Int(42) == Int(42)
     # The resulting tree is a conjunction of three Int(42) == Int(42)
     assert transformed.is_and()

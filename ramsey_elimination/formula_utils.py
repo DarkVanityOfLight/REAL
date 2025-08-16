@@ -82,12 +82,12 @@ def reconstruct_from_coeff_map(
         return terms[0]
     return Plus(terms)
 
-def apply_to_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
+def map_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
     """ Walk over the formula, preserve its logical structure and apply f to the atoms"""
     if is_atom(formula):
         return f(formula)
     else:
-        args = tuple(apply_to_atoms(arg, f) for arg in formula.args())
+        args = tuple(map_atoms(arg, f) for arg in formula.args())
         return create_node(formula.node_type(), args, formula._content.payload) 
 
 def create_node(node_type, args, payload=None) -> ExtendedFNode:

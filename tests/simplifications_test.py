@@ -6,7 +6,7 @@ import pysmt.operators as operators
 
 from ramsey_extensions.shortcuts import Mod
 
-from ramsey_elimination.formula_utils import is_atom, apply_to_atoms
+from ramsey_elimination.formula_utils import is_atom, map_atoms
 from ramsey_elimination.simplifications import (
     arithmetic_solver,
     make_int_input_format,
@@ -53,7 +53,7 @@ class TestFormulaUtils:
         
         # Arithmetic term is not treated as atom
         term = Plus(x, y)
-        out = apply_to_atoms(term, lambda atm: Int(99))
+        out = map_atoms(term, lambda atm: Int(99))
         # Plus stays unchanged
         assert out.node_type() == operators.PLUS and set(out.args()) == {x, y}
 

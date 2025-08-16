@@ -8,7 +8,7 @@ import pysmt.operators as operators
 from ramsey_elimination.simplifications import arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import ToInt
-from ramsey_elimination.formula_utils import apply_to_atoms, ast_to_terms, collect_atoms
+from ramsey_elimination.formula_utils import map_atoms, ast_to_terms, collect_atoms
 
 from math import floor, lcm
 from fractions import Fraction
@@ -250,10 +250,17 @@ def make_input_format(f, vars):
         additional_constraints.extend(constraints)
         return new_atom
 
-    new_f = apply_to_atoms(f, collector)
+    new_f = map_atoms(f, collector)
     
     return And(new_f, *additional_constraints)
 
+def split_int_real(f, vars):
+
+    def atom_rewriter(atom):
+
+        pass
+
+    new_f = map_atoms(f, atom_rewriter)
 
 def rewrite_atom(coefficient_map: Mapping[str, float], constant: float):
     pass
