@@ -11,6 +11,8 @@ from ramsey_elimination.formula_utils import apply_to_atoms, ast_to_terms, colle
 from math import floor, lcm
 from fractions import Fraction
 
+# FIXME: We do not deal with floors correctly when building, the arithmetic_solver will die on floors
+
 def make_zero() -> Tuple[ExtendedFNode, ExtendedFNode]:
     symbol = FreshSymbol(INT)
     return Equals(symbol, Int(0)), symbol #type: ignore
@@ -25,85 +27,85 @@ def make_plus_equals(x, y, z) -> ExtendedFNode:
 def make_floor(x, y) -> ExtendedFNode:
     return Equals(x, ToInt(y)) #type: ignore
 
-def build_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def make_powers_by_doubling(base: ExtendedFNode, count: int) -> Tuple[List[ExtendedFNode], List[ExtendedFNode]]:
     """
-    Builds constraints to represent any integer n
-    Parameters: 
-        n: The number to encode
-    Returns:
-        - The Variable representing the constant
-        - A list of additional constraints
+    Build [base, 2*base, 4*base, ...] up to `count` elements.
+    Returns (powers_list, constraints_to_construct_them).
     """
-    constraints = []
+    constraints: List[ExtendedFNode] = []
+    powers = [base]
+    for k in range(1, count):
+        pk = cast(ExtendedFNode, FreshSymbol(INT))
+        constraints.append(make_plus_equals(powers[k-1], powers[k-1], pk))
+        powers.append(pk)
+    return powers, constraints
 
-    # (i) Handle zero as a special case
+def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+    """
+    Sum the elements selected by LSB-first `bits` starting from `zero`.
+    Returns (sum_symbol, constraints).
+    If no bit is 1, returns zero.
+    """
+    constraints: List[ExtendedFNode] = []
+    sum_var = zero
+    for i, bit in enumerate(bits):
+        if bit == "1":
+            tmp = cast(ExtendedFNode, FreshSymbol(INT))
+            constraints.append(make_plus_equals(sum_var, elements[i], tmp))
+            sum_var = tmp
+    return sum_var, constraints
+
+
+
+def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+    """
+    Builds constraints to represent any integer n using primitives:
+      x = 0, x = 1, x + y = z
+    Returns (symbol_representing_n, constraints)
+    """
+    # Special-case zero
     if n == 0:
         c0, var0 = make_zero()
-        constraints.append(c0)
-        return var0, constraints
+        return var0, [c0]
 
-    # Create one and zero, which are fundamental building blocks
+    constraints: List[ExtendedFNode] = []
+
+    # Ensure 1 and 0 are available (we'll need both for construction)
     c1, one = make_one()
-    constraints.append(c1)
     c0, var0 = make_zero()
-    constraints.append(c0)
+    constraints.extend([c1, c0])
 
-    # Work with the absolute value of n to build the positive counterpart first
     abs_n = abs(n)
 
-    # Handle the special case where the absolute value is 1
+    # positive construction
     if abs_n == 1:
         positive_val = one
     else:
-        # Bits LSB-first (skip '0b' and reverse)
-        bits = bin(abs_n)[2:][::-1]
+        bits = bin(abs_n)[2:][::-1]  # LSB-first
+        # powers p[0]=1, p[1]=2, ...
+        p, p_constraints = make_powers_by_doubling(one, len(bits))
+        constraints.extend(p_constraints)
 
-        # Build powers of two: p[0]=1, p[1]=2, p[2]=4, ...
-        # This uses repeated application of x + y = z
-        p = [one]
-        for k in range(1, len(bits)):
-            pk = cast(ExtendedFNode, FreshSymbol(INT))
-            # pk = p[k-1] + p[k-1]  (e.g., 2=1+1, 4=2+2, etc.)
-            constraints.append(make_plus_equals(p[k-1], p[k-1], pk))
-            p.append(pk)
+        positive_val, sum_constraints = sum_selected_from_zero(bits, p, var0)
+        constraints.extend(sum_constraints)
 
-        # Sum the selected powers of two into `sum_var` starting from zero
-        sum_var = var0
-        for i, bit in enumerate(bits):
-            if bit == "1":
-                tmp = cast(ExtendedFNode, FreshSymbol(INT))
-                # tmp = sum_var + p[i]
-                constraints.append(make_plus_equals(sum_var, p[i], tmp))
-                sum_var = tmp
-        positive_val = sum_var
-
-    # Now, check if the original number was negative
+    # if n >= 0 return positive_val
     if n > 0:
-        # If n was positive, we're done. Return the positive value.
         return positive_val, constraints
-    else: # n < 0
-        # If n was negative, we need to create its negative counterpart.
-        # We introduce a new variable for our target negative number.
-        negative_val = cast(ExtendedFNode, FreshSymbol(INT))
 
-        # (iii) Use the constraint x + y = z to define the negative number.
-        # We assert that: negative_val + positive_val = 0
-        # This forces `negative_val` to be `-n`.
-        constraints.append(make_plus_equals(negative_val, positive_val, var0))
+    # n < 0 -> create negative by: neg + positive_val = 0
+    negative_val = cast(ExtendedFNode, FreshSymbol(INT))
+    constraints.append(make_plus_equals(negative_val, positive_val, var0))
+    return negative_val, constraints
 
-        return negative_val, constraints
 
-def build_mul_int_var(a: int, x) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+# FIXME: Correct the new variable type
+def make_mul_int_var(a: int, x: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
-    Build constraints and a fresh variable representing a * x.
-    Parameters:
-        a: The coefficient
-        x: The variable
-    Returns:
-        - The new variable representing a*x 
-        - Additional constraints
+    Build constraints and a fresh variable representing a * x using doubling + additions.
+    Returns (symbol_for_a_times_x, constraints).
     """
-    constraints = []
+    constraints: List[ExtendedFNode] = []
 
     # zero helper
     c0, zero = make_zero()
@@ -115,37 +117,29 @@ def build_mul_int_var(a: int, x) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     if abs(a) == 1:
         if a > 0:
             return x, constraints
-        # a == -1
+        # a == -1  => neg + x = 0
         neg = cast(ExtendedFNode, FreshSymbol(INT))
-        constraints.append(make_plus_equals(neg, x, zero))  # neg + x = 0 -> neg = -x
+        constraints.append(make_plus_equals(neg, x, zero))
         return neg, constraints
 
     abs_a = abs(a)
     bits = bin(abs_a)[2:][::-1]  # LSB-first
 
     # build multiples m[0]=x, m[1]=2*x, m[2]=4*x, ...
-    m = [x]
-    for k in range(1, len(bits)):
-        mk = FreshSymbol(INT)
-        constraints.append(make_plus_equals(m[k-1], m[k-1], mk))
-        m.append(mk)
+    m, m_constraints = make_powers_by_doubling(x, len(bits))
+    constraints.extend(m_constraints)
 
     # sum selected multiples into sum_var starting from zero
-    sum_var : ExtendedFNode = zero
-    for i, bit in enumerate(bits):
-        if bit == "1":
-            tmp = cast(ExtendedFNode, FreshSymbol(INT))
-            constraints.append(make_plus_equals(sum_var, m[i], tmp))
-            sum_var = tmp
-
-    positive_val = sum_var
+    sum_var, sum_constraints = sum_selected_from_zero(bits, m, zero)
+    constraints.extend(sum_constraints)
 
     if a > 0:
-        return positive_val, constraints
-    else:
-        neg = cast(ExtendedFNode, FreshSymbol(INT))
-        constraints.append(make_plus_equals(neg, positive_val, zero))  # neg + positive_val = 0 -> neg = -positive_val
-        return neg, constraints
+        return sum_var, constraints
+
+    # a < 0 => neg + sum_var = 0
+    neg = cast(ExtendedFNode, FreshSymbol(INT))
+    constraints.append(make_plus_equals(neg, sum_var, zero))
+    return neg, constraints
 
 
 def make_atom_input_format(atom: ExtendedFNode, vars) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
@@ -182,7 +176,7 @@ def make_atom_input_format(atom: ExtendedFNode, vars) -> Tuple[ExtendedFNode, Li
     # 1. Build LHS from variables
     term_symbols = []
     for var, coeff in scaled_coeffs:
-        term_symbol, mul_atoms = build_mul_int_var(coeff, var)
+        term_symbol, mul_atoms = make_mul_int_var(coeff, var)
         constraints.extend(mul_atoms)
         term_symbols.append(term_symbol)
 
@@ -199,11 +193,11 @@ def make_atom_input_format(atom: ExtendedFNode, vars) -> Tuple[ExtendedFNode, Li
         lhs_symbol = current_sum
 
     # 2. Build RHS constant
-    const_symbol, const_atoms = build_constant_int(scaled_c)
+    const_symbol, const_atoms = make_constant_int(scaled_c)
     constraints.extend(const_atoms)
 
     # 3. diff = LHS - RHS
-    neg_const_symbol, neg_const_atoms = build_mul_int_var(-1, const_symbol)
+    neg_const_symbol, neg_const_atoms = make_mul_int_var(-1, const_symbol)
     constraints.extend(neg_const_atoms)
 
     diff_symbol = FreshSymbol(INT)
