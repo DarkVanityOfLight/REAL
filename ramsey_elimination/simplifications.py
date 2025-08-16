@@ -24,8 +24,15 @@ def arithmetic_solver(
     Returns:
       (new_left, new_right, const) such that
         new_left * x = new_right * x + const
+
+    If `vars` is empty, all symbols from left and right are treated as variables
+    and moved to the left; the constant is placed on the right as before.
     """
     assert isinstance(vars, set)
+
+    # If no vars provided, treat all symbols as vars (move them to the left)
+    if len(vars) == 0:
+        vars = set(left.keys()) | set(right.keys())
 
     # Split terms: keep vars on LHS, move others to RHS
     Lw, Lo = {}, {}
@@ -55,7 +62,7 @@ def arithmetic_solver(
         new_right[sym] = coeff + Lo.pop(sym, 0)
     new_right |= Lo
 
-    # Constant shift
+    # Constant shift (constant moved to the right)
     const: Numeric = right_const - left_const
 
     return new_left, new_right, const
