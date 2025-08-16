@@ -1,6 +1,8 @@
 from typing import List, Mapping, Tuple, cast
+from pysmt import typing
+from pysmt.fnode import FNode
 from pysmt.shortcuts import LT, And, Equals, FreshSymbol, Int, Plus
-from pysmt.typing import INT
+from pysmt.typing import INT, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
 
 from ramsey_elimination.simplifications import arithmetic_solver
@@ -13,13 +15,25 @@ from fractions import Fraction
 
 # FIXME: We do not deal with floors correctly when building, the arithmetic_solver will die on floors
 
-def make_zero() -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(INT)
-    return Equals(symbol, Int(0)), symbol #type: ignore
+def make_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
+    symbol = FreshSymbol(symbol_type)
+    match symbol_type:
+        case _IntType():
+            return Equals(symbol, Int(0)), symbol #type: ignore
+        case _RealType():
+            return Equals(symbol, Real(0)), symbol #type: ignore
+        case _:
+            raise Exception(f"Could not create symbol with type {symbol_type.name}")
 
-def make_one() -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(INT)
-    return Equals(symbol, Int(1)), symbol #type: ignore
+def make_one(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
+    symbol = FreshSymbol(symbol_type)
+    match symbol_type:
+        case _IntType():
+            return Equals(symbol, Int(1)), symbol #type: ignore
+        case _RealType():
+            return Equals(symbol, Real(1)), symbol #type: ignore
+        case _:
+            raise Exception(f"Could not create symbol with type {symbol_type.name}")
 
 def make_plus_equals(x, y, z) -> ExtendedFNode:
     return Equals(Plus(x, y), z) #type: ignore
@@ -27,7 +41,7 @@ def make_plus_equals(x, y, z) -> ExtendedFNode:
 def make_floor(x, y) -> ExtendedFNode:
     return Equals(x, ToInt(y)) #type: ignore
 
-def make_powers_by_doubling(base: ExtendedFNode, count: int) -> Tuple[List[ExtendedFNode], List[ExtendedFNode]]:
+def make_powers_by_doubling(base: ExtendedFNode, count: int, symbol_type: PySMTType) -> Tuple[List[ExtendedFNode], List[ExtendedFNode]]:
     """
     Build [base, 2*base, 4*base, ...] up to `count` elements.
     Returns (powers_list, constraints_to_construct_them).
@@ -35,12 +49,12 @@ def make_powers_by_doubling(base: ExtendedFNode, count: int) -> Tuple[List[Exten
     constraints: List[ExtendedFNode] = []
     powers = [base]
     for k in range(1, count):
-        pk = cast(ExtendedFNode, FreshSymbol(INT))
+        pk = cast(ExtendedFNode, FreshSymbol(symbol_type))
         constraints.append(make_plus_equals(powers[k-1], powers[k-1], pk))
         powers.append(pk)
     return powers, constraints
 
-def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
     Sum the elements selected by LSB-first `bits` starting from `zero`.
     Returns (sum_symbol, constraints).
@@ -50,7 +64,7 @@ def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: Exten
     sum_var = zero
     for i, bit in enumerate(bits):
         if bit == "1":
-            tmp = cast(ExtendedFNode, FreshSymbol(INT))
+            tmp = cast(ExtendedFNode, FreshSymbol(symbol_type))
             constraints.append(make_plus_equals(sum_var, elements[i], tmp))
             sum_var = tmp
     return sum_var, constraints
@@ -65,14 +79,14 @@ def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
     # Special-case zero
     if n == 0:
-        c0, var0 = make_zero()
+        c0, var0 = make_zero(INT)
         return var0, [c0]
 
     constraints: List[ExtendedFNode] = []
 
     # Ensure 1 and 0 are available (we'll need both for construction)
-    c1, one = make_one()
-    c0, var0 = make_zero()
+    c1, one = make_one(INT)
+    c0, var0 = make_zero(INT)
     constraints.extend([c1, c0])
 
     abs_n = abs(n)
@@ -83,10 +97,10 @@ def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     else:
         bits = bin(abs_n)[2:][::-1]  # LSB-first
         # powers p[0]=1, p[1]=2, ...
-        p, p_constraints = make_powers_by_doubling(one, len(bits))
+        p, p_constraints = make_powers_by_doubling(one, len(bits), INT)
         constraints.extend(p_constraints)
 
-        positive_val, sum_constraints = sum_selected_from_zero(bits, p, var0)
+        positive_val, sum_constraints = sum_selected_from_zero(bits, p, var0, INT)
         constraints.extend(sum_constraints)
 
     # if n >= 0 return positive_val
@@ -100,7 +114,7 @@ def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
 
 
 # FIXME: Correct the new variable type
-def make_mul_int_var(a: int, x: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
     Build constraints and a fresh variable representing a * x using doubling + additions.
     Returns (symbol_for_a_times_x, constraints).
@@ -108,7 +122,7 @@ def make_mul_int_var(a: int, x: ExtendedFNode) -> Tuple[ExtendedFNode, List[Exte
     constraints: List[ExtendedFNode] = []
 
     # zero helper
-    c0, zero = make_zero()
+    c0, zero = make_zero(symbol_type)
     constraints.append(c0)
 
     # trivial cases
@@ -118,7 +132,7 @@ def make_mul_int_var(a: int, x: ExtendedFNode) -> Tuple[ExtendedFNode, List[Exte
         if a > 0:
             return x, constraints
         # a == -1  => neg + x = 0
-        neg = cast(ExtendedFNode, FreshSymbol(INT))
+        neg = cast(ExtendedFNode, FreshSymbol(symbol_type))
         constraints.append(make_plus_equals(neg, x, zero))
         return neg, constraints
 
@@ -126,11 +140,11 @@ def make_mul_int_var(a: int, x: ExtendedFNode) -> Tuple[ExtendedFNode, List[Exte
     bits = bin(abs_a)[2:][::-1]  # LSB-first
 
     # build multiples m[0]=x, m[1]=2*x, m[2]=4*x, ...
-    m, m_constraints = make_powers_by_doubling(x, len(bits))
+    m, m_constraints = make_powers_by_doubling(x, len(bits), symbol_type)
     constraints.extend(m_constraints)
 
     # sum selected multiples into sum_var starting from zero
-    sum_var, sum_constraints = sum_selected_from_zero(bits, m, zero)
+    sum_var, sum_constraints = sum_selected_from_zero(bits, m, zero, symbol_type)
     constraints.extend(sum_constraints)
 
     if a > 0:
@@ -176,17 +190,19 @@ def make_atom_input_format(atom: ExtendedFNode, vars) -> Tuple[ExtendedFNode, Li
     # 1. Build LHS from variables
     term_symbols = []
     for var, coeff in scaled_coeffs:
-        term_symbol, mul_atoms = make_mul_int_var(coeff, var)
+        term_symbol, mul_atoms = make_const_mul_var(coeff, var, var.symbol_type())
         constraints.extend(mul_atoms)
         term_symbols.append(term_symbol)
 
     if not term_symbols:
-        zero_atom, lhs_symbol = make_zero()
+        zero_atom, lhs_symbol = make_zero(INT)
         constraints.append(zero_atom)
+        sum_typ = INT
     else:
         current_sum = term_symbols[0]
+        sum_typ = term_symbols[0].symbol_type()
         for i in range(1, len(term_symbols)):
-            sum_result_symbol = FreshSymbol(INT)
+            sum_result_symbol = FreshSymbol(sum_typ)
             plus_atom = make_plus_equals(current_sum, term_symbols[i], sum_result_symbol)
             constraints.append(plus_atom)
             current_sum = sum_result_symbol
@@ -197,16 +213,16 @@ def make_atom_input_format(atom: ExtendedFNode, vars) -> Tuple[ExtendedFNode, Li
     constraints.extend(const_atoms)
 
     # 3. diff = LHS - RHS
-    neg_const_symbol, neg_const_atoms = make_mul_int_var(-1, const_symbol)
+    neg_const_symbol, neg_const_atoms = make_const_mul_var(-1, const_symbol, const_symbol.symbol_type())
     constraints.extend(neg_const_atoms)
 
-    diff_symbol = FreshSymbol(INT)
+    diff_symbol = FreshSymbol(sum_typ)
     diff_atom = make_plus_equals(lhs_symbol, neg_const_symbol, diff_symbol)
     constraints.append(diff_atom)
 
     # 4. Canonical constants
-    zero_atom, zero_symbol = make_zero()
-    one_atom, one_symbol = make_one()
+    zero_atom, zero_symbol = make_zero(sum_typ)
+    one_atom, one_symbol = make_one(sum_typ)
     constraints.extend([zero_atom, one_atom])
 
     # 5. Create main canonical atom
