@@ -1,4 +1,4 @@
-from typing import List, Mapping, Tuple, cast
+from typing import List, Mapping, Optional, Tuple, cast
 from pysmt import typing
 from pysmt.fnode import FNode
 from pysmt.shortcuts import GE, LE, LT, And, Equals, FreshSymbol, Implies, Int, Minus, Plus, Real, Symbol, Times, ToReal
@@ -237,6 +237,9 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
                     main_atom = cast(ExtendedFNode, LT(diff_symbol, Int(0)))
                 case _RealType():
                     main_atom = cast(ExtendedFNode, LT(diff_symbol, Real(0)))
+                case _:
+                    raise Exception(f"Unknown type: {sum_typ}")
+
 
         case operators.LE:
             # diff <= 0 → diff < 1
@@ -284,14 +287,17 @@ def flatten_plus(expr: ExtendedFNode) -> List[ExtendedFNode]:
 def split_by_type(terms: List[ExtendedFNode]) -> Tuple[List[ExtendedFNode], List[ExtendedFNode], ExtendedFNode]:
     """Split symbol terms into (int_syms, real_syms, const_sum).
        Assumes constants present only as Int/Real constants (or none).
-       ToReal(int_var) is treated as an integer variable."""
-    ints, reals = [], []
-    const_sum = None
+    """
+
+    ints: List[ExtendedFNode] = []
+    reals: List[ExtendedFNode] = []
+    const_sum: Optional[ExtendedFNode] = None
+
     for t in terms:
         if t.is_toreal():
-            inner = t.args()[0]
+            inner = cast(ExtendedFNode, t.args()[0])
             if inner.is_symbol() and inner.symbol_type() == INT:
-                ints.append(inner)  # Store the unwrapped integer variable
+                ints.append(inner)
             else:
                 raise ValueError("ToReal wraps non-integer symbol")
         elif t.is_symbol():
@@ -302,12 +308,14 @@ def split_by_type(terms: List[ExtendedFNode]) -> Tuple[List[ExtendedFNode], List
             else:
                 raise ValueError("unexpected symbol type")
         elif t.is_constant():
-            const_sum = t if const_sum is None else Plus(const_sum, t)
+            const_sum = t if const_sum is None else cast(ExtendedFNode, Plus(const_sum, t))
         else:
-            # for our restricted shapes we don't expect other node types
             raise ValueError("unexpected term type: %s" % t.node_type())
+
     if const_sum is None:
-        const_sum = Int(0) if len(ints)>0 else Real(0)
+        const_sum = cast(ExtendedFNode, Int(0)) if len(ints) > 0 else cast(ExtendedFNode, Real(0))
+
+    assert const_sum is not None
     return ints, reals, const_sum
 
 def decompose(f):
@@ -338,7 +346,7 @@ def decompose(f):
         lhs, rhs = atom.args()
         
         # Pattern: (int + real) = k
-        def match_int_real_eq_const(a, b):
+        def match_int_real_eq_const(a, b) -> Optional[ExtendedFNode]:
             if not b.is_constant():
                 return None
             
@@ -354,13 +362,13 @@ def decompose(f):
             k = b.constant_value()
             
             if k == 0:
-                return And(Equals(xi, Int(0)), Equals(xr, Real(0)))
+                return cast(ExtendedFNode, And(Equals(xi, Int(0)), Equals(xr, Real(0))))
             elif k == 1:
-                return And(Equals(xi, Int(1)), Equals(xr, Real(0)))
+                return cast(ExtendedFNode, And(Equals(xi, Int(1)), Equals(xr, Real(0))))
             return None
 
         # Pattern: (int + real) < 0  
-        def match_int_real_lt_zero(a, b):
+        def match_int_real_lt_zero(a, b) -> Optional[ExtendedFNode]:
             if not (b.is_constant() and b.constant_value() == 0):
                 return None
             
@@ -371,7 +379,7 @@ def decompose(f):
             ints, reals, _ = terms_analysis
             if len(ints) != 1 or len(reals) != 1:
                 return None
-            return LT(ints[0], Int(0))
+            return cast(ExtendedFNode, LT(ints[0], Int(0)))
 
         # Pattern: (xi + xr) + (yi + yr) = zi + zr
         # Where yr could implicitly be zero
