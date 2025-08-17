@@ -175,6 +175,10 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
         (new_atom, additional_constraints)
     """
     left, right = atom.arg(0), atom.arg(1)
+
+    if left.is_toint() or right.is_toint():
+        return atom, []
+
     l_coeffs, l_const = ast_to_terms(left)
     r_coeffs, r_const = ast_to_terms(right)
 
@@ -518,7 +522,6 @@ def compute_seperation(f):
     # Only f_new should appear here
     f_new = clean_floors(f_new)
     f_new = make_input_format(f_new)
-    print(f_new.serialize())
     f_new, new_reals = split_int_real(f_new)
     f_new = decompose(f_new)
 
