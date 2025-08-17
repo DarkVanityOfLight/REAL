@@ -8,7 +8,7 @@ import pysmt.operators as operators
 from ramsey_elimination.simplifications import arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import ToInt
-from ramsey_elimination.formula_utils import map_atoms, ast_to_terms, collect_atoms
+from ramsey_elimination.formula_utils import map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
 
 from math import floor, lcm
 from fractions import Fraction
@@ -260,19 +260,19 @@ def make_input_format(f):
 
 def split_int_real(f):
     new_reals = []
-    def atom_rewriter(atom: ExtendedFNode):
-        if atom.is_symbol() and atom.get_type() == REAL:
+    def atom_rewriter(op: ExtendedFNode) -> ExtendedFNode:
+        if op.is_symbol() and op.get_type() == REAL:
             i = FreshSymbol(INT)
             r = FreshSymbol(REAL)
             new_reals.append(r)
-            return Plus(ToReal(i), r)
+            return Plus(ToReal(i), r) #type: ignore
         else:
-            return atom
+            return op
 
-    return map_atoms(f, atom_rewriter), new_reals
+    return map_arithmetic_atom(f, atom_rewriter), new_reals
 
 
-def flatten_plus(expr: FNode) -> List[FNode]:
+def flatten_plus(expr: ExtendedFNode) -> List[ExtendedFNode]:
     """Return a flat list of terms in a + b + c ... (non-recursive for other nodes)."""
     if expr.is_plus():
         out = []
@@ -281,13 +281,20 @@ def flatten_plus(expr: FNode) -> List[FNode]:
         return out
     return [expr]
 
-def split_by_type(terms: List[FNode]) -> Tuple[List[FNode], List[FNode], FNode]:
+def split_by_type(terms: List[ExtendedFNode]) -> Tuple[List[ExtendedFNode], List[ExtendedFNode], ExtendedFNode]:
     """Split symbol terms into (int_syms, real_syms, const_sum).
-       Assumes constants present only as Int/Real constants (or none)."""
+       Assumes constants present only as Int/Real constants (or none).
+       ToReal(int_var) is treated as an integer variable."""
     ints, reals = [], []
     const_sum = None
     for t in terms:
-        if t.is_symbol():
+        if t.is_toreal():
+            inner = t.args()[0]
+            if inner.is_symbol() and inner.symbol_type() == INT:
+                ints.append(inner)  # Store the unwrapped integer variable
+            else:
+                raise ValueError("ToReal wraps non-integer symbol")
+        elif t.is_symbol():
             if t.symbol_type() == INT:
                 ints.append(t)
             elif t.symbol_type() == REAL:
@@ -304,110 +311,181 @@ def split_by_type(terms: List[FNode]) -> Tuple[List[FNode], List[FNode], FNode]:
     return ints, reals, const_sum
 
 def decompose(f):
-    def rewrite_atom(atom: ExtendedFNode) -> FNode:
-        """Detect which of the allowed shapes `atom` is and return the rewritten formula.
-        Assumes atom exactly matches one of the left-hand-side shapes."""
+    def unwrap_toreal(term):
+        """Unwrap ToReal(x) to just x, treating it as an integer."""
+        if term.is_function_application() and term.is_toint():
+            return term.args()[0]
+        return term
+    
+    def analyze_sum_terms(expr):
+        """Analyze a sum, unwrapping ToReal terms."""
+        if not expr.is_plus():
+            return None
+        
+        terms = flatten_plus(expr)
+        unwrapped_terms = [unwrap_toreal(term) for term in terms]
+        
+        try:
+            ints, reals, consts = split_by_type(unwrapped_terms)
+            return ints, reals, consts
+        except ValueError:
+            return None
+
+    def rewrite_atom(atom: ExtendedFNode) -> ExtendedFNode:
         if not (atom.is_equals() or atom.is_lt() or atom.is_le()):
             raise ValueError("unsupported atom shape")
 
-        # handle binary relations only
-        lhs: ExtendedFNode; rhs: ExtendedFNode
         lhs, rhs = atom.args()
-
-        # Case A,B,D,E: forms where one side is a sum of int+real and the other is constant or floor/const
-        # We'll first try simple shapes: (int + real) = k  or (int + real) < 0
-        def try_int_plus_real_vs_constant(a, b, rel):
-            # a = plus(int, real) and b = constant int/real
-            if a.is_plus():
-                terms = flatten_plus(a)
-                try:
-                    ints, reals, consts = split_by_type(terms)
-                except ValueError:
-                    return None
-                if len(ints) == 1 and len(reals) == 1 and (b.is_constant()):
-                    xi = ints[0]; xr = reals[0]
-                    # equality cases with integer constants
-                    if rel == "eq" and b.is_int_constant():
-                        k = b  # Int(k)
-                        # if k is 0 -> xi=0 and xr=0
-                        # if k is 1 -> xi=1 and xr=0 (assumed fractional domain [0,1) for xr)
-                        if int(str(k.constant_value())) == 0:
-                            return And(Equals(xi, Int(0)), Equals(xr, Real(0)))
-                        if int(str(k.constant_value())) == 1:
-                            return And(Equals(xi, Int(1)), Equals(xr, Real(0)))
-                    # inequality case (int + real) < 0 -> int < 0
-                    if rel == "lt" and b.is_int_constant() and int(str(b.constant_value())) == 0:
-                        return LT(xi, Int(0))
+        
+        # Pattern: (int + real) = k
+        def match_int_real_eq_const(a, b):
+            if not b.is_constant():
+                return None
+            
+            terms_analysis = analyze_sum_terms(a)
+            if not terms_analysis:
+                return None
+            
+            ints, reals, _ = terms_analysis
+            if len(ints) != 1 or len(reals) != 1:
+                return None
+                
+            xi, xr = ints[0], reals[0]
+            k = b.constant_value()
+            
+            if k == 0:
+                return And(Equals(xi, Int(0)), Equals(xr, Real(0)))
+            elif k == 1:
+                return And(Equals(xi, Int(1)), Equals(xr, Real(0)))
             return None
 
-        # try both orientations
+        # Pattern: (int + real) < 0  
+        def match_int_real_lt_zero(a, b):
+            if not (b.is_constant() and b.constant_value() == 0):
+                return None
+            
+            terms_analysis = analyze_sum_terms(a)
+            if not terms_analysis:
+                return None
+                
+            ints, reals, _ = terms_analysis
+            if len(ints) != 1 or len(reals) != 1:
+                return None
+            return LT(ints[0], Int(0))
+
+        # Pattern: (xi + xr) + (yi + yr) = zi + zr
+        # Where yr could implicitly be zero
+        def match_double_sum_eq(a, b):
+            a_analysis = analyze_sum_terms(a)
+            b_analysis = analyze_sum_terms(b)
+
+            if not a_analysis or not b_analysis:
+                return None
+
+            a_ints, a_reals, _ = a_analysis
+            b_ints, b_reals, _ = b_analysis
+
+            # We can only handle cases with 2 integer vars on LHS and 1 on RHS.
+            if len(a_ints) != 2 or len(b_ints) != 1 or len(b_reals) != 1:
+                return None
+
+            xi, yi = a_ints
+            zi = b_ints[0]
+            zr = b_reals[0]
+
+            # Case 1: xi + xr + yi + yr = zi + zr
+            # The sum of two fractional parts can exceed 1, so we need carry logic.
+            if len(a_reals) == 2:
+                xr, yr = a_reals
+                R = Plus(xr, yr)
+                case1 = Implies(LT(R, Real(1)),
+                               And(Equals(Plus(xi, yi), zi), Equals(R, zr)))
+                case2 = Implies(GE(R, Real(1)),
+                               And(Equals(Plus(Plus(xi, yi), Int(1)), zi),
+                                   Equals(Minus(R, Real(1)), zr)))
+                return And(case1, case2)
+
+            # Case 2: xi + xr + yi = zi + zr (yr is implicitly zero)
+            # The single fractional part xr cannot exceed 1, so no carry is possible.
+            elif len(a_reals) == 1:
+                xr = a_reals[0]
+                # The rewrite simplifies to a direct split of the integer and real parts.
+                return And(Equals(Plus(xi, yi), zi),
+                           Equals(xr, zr))
+
+            # If the number of reals on the LHS is not 1 or 2, we can't match.
+            return None
+
+        # Pattern: xi + xr = floor(yi + yr) - now handles ToReal transparently
+        def match_floor_eq(a, b):
+            if not (b.is_function_application() and b.is_toint()):
+                return None
+                
+            a_analysis = analyze_sum_terms(a)
+            if not a_analysis:
+                return None
+                
+            a_ints, a_reals, _ = a_analysis
+            if len(a_ints) != 1 or len(a_reals) != 1:
+                return None
+            
+            floor_arg = b.args()[0]
+            b_analysis = analyze_sum_terms(floor_arg)
+            if not b_analysis:
+                return None
+                
+            b_ints, _, _ = b_analysis
+            if len(b_ints) != 1:
+                return None
+                
+            xi, xr = a_ints[0], a_reals[0]
+            yi = b_ints[0]
+            return And(Equals(xr, Real(0)), Equals(xi, yi))
+
+        # Pattern: (real + ToReal(int)) = real_constant
+        def match_real_toreal_eq_const(a, b):
+            if not (a.is_plus() and b.is_constant()):
+                return None
+            terms = flatten_plus(a)
+            if len(terms) != 2:
+                return None
+            
+            # Look for one real variable and one ToReal(int)
+            real_var = None
+            int_in_toreal = None
+            
+            for term in terms:
+                if term.is_function_application() and term.is_toint():
+                    int_in_toreal = term.args()[0]
+                elif not term.is_constant():  # assume it's a real variable
+                    real_var = term
+            
+            if real_var is None or int_in_toreal is None:
+                return None
+            
+            # (real + ToReal(int)) = 0 -> real = 0 and int = 0
+            if b.constant_value() == 0:
+                return And(Equals(real_var, Real(0)), Equals(int_in_toreal, Int(0)))
+            
+            return None
+
+        # Try all patterns
         if atom.is_equals():
-            # equality
-            # 1) (int+real) = 0  or = 1
-            r = try_int_plus_real_vs_constant(lhs, rhs, "eq") or try_int_plus_real_vs_constant(rhs, lhs, "eq")
-            if r is not None:
-                return r
+            for matcher in [match_int_real_eq_const, match_double_sum_eq, match_floor_eq]:
+                result = matcher(lhs, rhs) or matcher(rhs, lhs)
+                if result:
+                    return result
+        
+        if atom.is_lt():
+            result = match_int_real_lt_zero(lhs, rhs) or match_int_real_lt_zero(rhs, lhs)
+            if result:
+                return result
 
-        if atom.is_le():
-            r = try_int_plus_real_vs_constant(lhs, rhs, "lt") or try_int_plus_real_vs_constant(rhs, lhs, "lt")
-            if r is not None:
-                return r
-
-        # Case C: xint + xreal + yint + yreal = zint + zreal
-        # detect exact pattern: lhs has 4 symbol terms (2 ints,2 reals), rhs has 2 (1 int,1 real)
-        if atom.is_equals():
-            if lhs.is_plus() and rhs.is_plus():
-                lhs_terms = flatten_plus(lhs)
-                rhs_terms = flatten_plus(rhs)
-                try:
-                    li, lr, _ = split_by_type(lhs_terms)
-                    ri, rr, _ = split_by_type(rhs_terms)
-                except ValueError:
-                    li = lr = ri = rr = []
-                if len(li) == 2 and len(lr) == 2 and len(ri) == 1 and len(rr) == 1:
-                    # name the symbols
-                    xint, yint = li[0], li[1]
-                    xreal, yreal = lr[0], lr[1]
-                    zint = ri[0]
-                    zreal = rr[0]
-                    # build R = xreal + yreal
-                    R = Plus(xreal, yreal)
-                    # case1: R < 1 -> xint + yint = zint  AND  xreal + yreal = zreal
-                    case1 = Implies(LT(R, Real(1)),
-                                    And(Equals(Plus(xint, yint), zint),
-                                        Equals(R, zreal)))
-                    # case2: R >= 1 -> xint + yint + 1 = zint  AND  xreal + yreal - 1 = zreal
-                    case2 = Implies(GE(R, Real(1)),
-                                    And(Equals(Plus(Plus(xint, yint), Int(1)), zint),
-                                        Equals(Minus(R, Real(1)), zreal)))
-                    return And(case1, case2)
-
-        # Case F: xint + xreal = floor(yint + yreal)
-        if atom.is_equals():
-            # lhs must be plus of int+real
-            if lhs.is_plus():
-                try:
-                    li, lr, _ = split_by_type(flatten_plus(lhs))
-                except ValueError:
-                    li = lr = []
-                if len(li) == 1 and len(lr) == 1:
-                    xi, xr = li[0], lr[0]
-                    # detect floor-like RHS:
-                    if rhs.is_function_application():
-                        if rhs.is_toint():
-                            arg = rhs.args()[0]
-                            # expect arg = yint + yreal
-                            if arg.is_plus():
-                                try:
-                                    yi_list, yr_list, _ = split_by_type(flatten_plus(arg))
-                                except ValueError:
-                                    yi_list = yr_list = []
-                                if len(yi_list) == 1 and len(yr_list) == 1:
-                                    yi = yi_list[0]
-                                    # rewrite: xreal = 0 /\ xint = yi
-                                    return And(Equals(xr, Real(0)), Equals(xi, yi))
-
-        raise ValueError(f"Atom {atom.serialize()} did not match any supported left-hand shape")
+        if len({v.get_type() for v in atom.get_free_variables()}) > 1:
+            raise ValueError(f"Atom {atom.serialize()} did not match any supported pattern")
+        else:
+            return atom
+    
     return map_atoms(f, rewrite_atom)
 
 def compute_seperation(f):
@@ -417,16 +495,23 @@ def compute_seperation(f):
 
     print(f_new.serialize())
     f_new = make_input_format(f_new)
-    print(f"Input format: {f_new.serialize()}")
     f_new, new_reals = split_int_real(f_new)
-    print(f"Real split: {f_new.serialize()}")
     f_new = decompose(f_new)
-    print(f"Decompose: {f_new.serialize()}")
 
-    return And(f_new, *[And(LE(0, r), LT(r, 1))for r in new_reals])
+    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals])
 
 
 if __name__ == "__main__":
+
+    def _validate_separation(f):
+        def validate_atom(atom):
+            assert len({v.get_type() for v in atom.get_free_variables()}) <= 1
+            return atom
+    
+        map_atoms(f, validate_atom)
+        return True
+
+
     x = Symbol("x", REAL)
     y = Symbol("y", REAL)
 
@@ -443,3 +528,4 @@ if __name__ == "__main__":
     # This is the main function from your script
     decomposed_formula = compute_seperation(original_formula)
     print(decomposed_formula.serialize())
+    _validate_separation(decomposed_formula)
