@@ -208,13 +208,22 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
         constraints.append(zero_atom)
         sum_typ = INT
     else:
-        current_sum = term_symbols[0]
-        sum_typ = term_symbols[0].symbol_type()
+        sum_typ = REAL if any(s.get_type() == REAL for s in term_symbols) else INT
+
+        def to_real_if_needed(sym):
+            return ToReal(sym) if (sym.get_type() == INT and sum_typ == REAL) else sym
+
+        current_sum = to_real_if_needed(term_symbols[0])
+
         for i in range(1, len(term_symbols)):
             sum_result_symbol = FreshSymbol(sum_typ)
-            plus_atom = make_plus_equals(current_sum, term_symbols[i], sum_result_symbol)
+
+            term_symbol = to_real_if_needed(term_symbols[i])
+
+            plus_atom = make_plus_equals(current_sum, term_symbol, sum_result_symbol)
             constraints.append(plus_atom)
             current_sum = sum_result_symbol
+
         lhs_symbol = current_sum
 
     # 2. Build RHS constant
