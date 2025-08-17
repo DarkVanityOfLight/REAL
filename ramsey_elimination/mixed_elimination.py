@@ -1,7 +1,7 @@
 from typing import List, Mapping, Tuple, cast
 from pysmt import typing
 from pysmt.fnode import FNode
-from pysmt.shortcuts import GE, LT, And, Equals, FreshSymbol, Implies, Int, Minus, Plus, Real, ToReal
+from pysmt.shortcuts import GE, LE, LT, And, Equals, FreshSymbol, Implies, Int, Minus, Plus, Real, Symbol, Times, ToReal
 from pysmt.typing import INT, REAL, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
 
@@ -12,8 +12,6 @@ from ramsey_elimination.formula_utils import map_atoms, ast_to_terms, collect_at
 
 from math import floor, lcm
 from fractions import Fraction
-
-# FIXME: We do not deal with floors correctly when building, the arithmetic_solver will die on floors
 
 def make_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
     symbol = FreshSymbol(symbol_type)
@@ -113,7 +111,6 @@ def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     return negative_val, constraints
 
 
-# FIXME: Correct the new variable type
 def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
     Build constraints and a fresh variable representing a * x using doubling + additions.
@@ -174,14 +171,14 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
 
     # Scale coefficients to integers
     l_c_m = 1
-    for _, coeff in coeffs:
+    for coeff in coeffs.values():
         frac_coeff = Fraction(coeff).limit_denominator()
         if frac_coeff.denominator != 1:
             l_c_m = lcm(frac_coeff.denominator, l_c_m)
 
     scaled_coeffs = [
         (var, int(Fraction(coeff).limit_denominator() * l_c_m))
-        for var, coeff in coeffs
+        for var, coeff in coeffs.items()
     ]
     scaled_c = int(Fraction(c).limit_denominator() * l_c_m)
 
@@ -211,9 +208,12 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
     # 2. Build RHS constant
     const_symbol, const_atoms = make_constant_int(scaled_c)
     constraints.extend(const_atoms)
+    if sum_typ == REAL:
+        const_symbol_real = cast(ExtendedFNode, ToReal(const_symbol))
+        const_symbol = const_symbol_real
 
     # 3. diff = LHS - RHS
-    neg_const_symbol, neg_const_atoms = make_const_mul_var(-1, const_symbol, const_symbol.symbol_type())
+    neg_const_symbol, neg_const_atoms = make_const_mul_var(-1, const_symbol, sum_typ)
     constraints.extend(neg_const_atoms)
 
     diff_symbol = FreshSymbol(sum_typ)
@@ -232,7 +232,12 @@ def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[Ext
             main_atom = make_plus_equals(diff_symbol, zero_symbol, zero_symbol)
         case operators.LT:
             # diff < 0
-            main_atom = cast(ExtendedFNode, LT(diff_symbol, zero_symbol))
+            match sum_typ:
+                case _IntType():
+                    main_atom = cast(ExtendedFNode, LT(diff_symbol, Int(0)))
+                case _RealType():
+                    main_atom = cast(ExtendedFNode, LT(diff_symbol, Real(0)))
+
         case operators.LE:
             # diff <= 0 → diff < 1
             main_atom = cast(ExtendedFNode, LT(diff_symbol, one_symbol))
@@ -254,16 +259,17 @@ def make_input_format(f):
     return And(new_f, *additional_constraints)
 
 def split_int_real(f):
-
+    new_reals = []
     def atom_rewriter(atom: ExtendedFNode):
         if atom.is_symbol() and atom.get_type() == REAL:
             i = FreshSymbol(INT)
             r = FreshSymbol(REAL)
+            new_reals.append(r)
             return Plus(ToReal(i), r)
         else:
             return atom
 
-    return map_atoms(f, atom_rewriter)
+    return map_atoms(f, atom_rewriter), new_reals
 
 
 def flatten_plus(expr: FNode) -> List[FNode]:
@@ -297,116 +303,143 @@ def split_by_type(terms: List[FNode]) -> Tuple[List[FNode], List[FNode], FNode]:
         const_sum = Int(0) if len(ints)>0 else Real(0)
     return ints, reals, const_sum
 
-def rewrite_atom(atom: ExtendedFNode) -> FNode:
-    """Detect which of the allowed shapes `atom` is and return the rewritten formula.
-       Assumes atom exactly matches one of the left-hand-side shapes."""
-    if not (atom.is_equals() or atom.is_lt() or atom.is_le()):
-        raise ValueError("unsupported atom shape")
-
-    # handle binary relations only
-    lhs: ExtendedFNode; rhs: ExtendedFNode
-    lhs, rhs = atom.args()
-
-    # Case A,B,D,E: forms where one side is a sum of int+real and the other is constant or floor/const
-    # We'll first try simple shapes: (int + real) = k  or (int + real) < 0
-    def try_int_plus_real_vs_constant(a, b, rel):
-        # a = plus(int, real) and b = constant int/real
-        if a.is_plus():
-            terms = flatten_plus(a)
-            try:
-                ints, reals, consts = split_by_type(terms)
-            except ValueError:
-                return None
-            if len(ints) == 1 and len(reals) == 1 and (b.is_constant()):
-                xi = ints[0]; xr = reals[0]
-                # equality cases with integer constants
-                if rel == "eq" and b.is_int_constant():
-                    k = b  # Int(k)
-                    # if k is 0 -> xi=0 and xr=0
-                    # if k is 1 -> xi=1 and xr=0 (assumed fractional domain [0,1) for xr)
-                    if int(str(k.constant_value())) == 0:
-                        return And(Equals(xi, Int(0)), Equals(xr, Real(0)))
-                    if int(str(k.constant_value())) == 1:
-                        return And(Equals(xi, Int(1)), Equals(xr, Real(0)))
-                # inequality case (int + real) < 0 -> int < 0
-                if rel == "lt" and b.is_int_constant() and int(str(b.constant_value())) == 0:
-                    return LT(xi, Int(0))
-        return None
-
-    # try both orientations
-    if atom.is_equals():
-        # equality
-        # 1) (int+real) = 0  or = 1
-        r = try_int_plus_real_vs_constant(lhs, rhs, "eq") or try_int_plus_real_vs_constant(rhs, lhs, "eq")
-        if r is not None:
-            return r
-
-    if atom.is_le():
-        r = try_int_plus_real_vs_constant(lhs, rhs, "lt") or try_int_plus_real_vs_constant(rhs, lhs, "lt")
-        if r is not None:
-            return r
-
-    # Case C: xint + xreal + yint + yreal = zint + zreal
-    # detect exact pattern: lhs has 4 symbol terms (2 ints,2 reals), rhs has 2 (1 int,1 real)
-    if atom.is_equals():
-        if lhs.is_plus() and rhs.is_plus():
-            lhs_terms = flatten_plus(lhs)
-            rhs_terms = flatten_plus(rhs)
-            try:
-                li, lr, _ = split_by_type(lhs_terms)
-                ri, rr, _ = split_by_type(rhs_terms)
-            except ValueError:
-                li = lr = ri = rr = []
-            if len(li) == 2 and len(lr) == 2 and len(ri) == 1 and len(rr) == 1:
-                # name the symbols
-                xint, yint = li[0], li[1]
-                xreal, yreal = lr[0], lr[1]
-                zint = ri[0]
-                zreal = rr[0]
-                # build R = xreal + yreal
-                R = Plus(xreal, yreal)
-                # case1: R < 1 -> xint + yint = zint  AND  xreal + yreal = zreal
-                case1 = Implies(LT(R, Real(1)),
-                                And(Equals(Plus(xint, yint), zint),
-                                    Equals(R, zreal)))
-                # case2: R >= 1 -> xint + yint + 1 = zint  AND  xreal + yreal - 1 = zreal
-                case2 = Implies(GE(R, Real(1)),
-                                And(Equals(Plus(Plus(xint, yint), Int(1)), zint),
-                                    Equals(Minus(R, Real(1)), zreal)))
-                return And(case1, case2)
-
-    # Case F: xint + xreal = floor(yint + yreal)
-    # We accept RHS being an application named 'floor' or 'to_int'
-    if atom.is_equals():
-        # lhs must be plus of int+real
-        if lhs.is_plus():
-            try:
-                li, lr, _ = split_by_type(flatten_plus(lhs))
-            except ValueError:
-                li = lr = []
-            if len(li) == 1 and len(lr) == 1:
-                xi, xr = li[0], lr[0]
-                # detect floor-like RHS:
-                if rhs.is_function_application():
-                    if rhs.is_toint():
-                        arg = rhs.args()[0]
-                        # expect arg = yint + yreal
-                        if arg.is_plus():
-                            try:
-                                yi_list, yr_list, _ = split_by_type(flatten_plus(arg))
-                            except ValueError:
-                                yi_list = yr_list = []
-                            if len(yi_list) == 1 and len(yr_list) == 1:
-                                yi = yi_list[0]
-                                # rewrite: xreal = 0 /\ xint = yi
-                                return And(Equals(xr, Real(0)), Equals(xi, yi))
-
-    raise ValueError("atom did not match any supported left-hand shape")
-
 def decompose(f):
+    def rewrite_atom(atom: ExtendedFNode) -> FNode:
+        """Detect which of the allowed shapes `atom` is and return the rewritten formula.
+        Assumes atom exactly matches one of the left-hand-side shapes."""
+        if not (atom.is_equals() or atom.is_lt() or atom.is_le()):
+            raise ValueError("unsupported atom shape")
+
+        # handle binary relations only
+        lhs: ExtendedFNode; rhs: ExtendedFNode
+        lhs, rhs = atom.args()
+
+        # Case A,B,D,E: forms where one side is a sum of int+real and the other is constant or floor/const
+        # We'll first try simple shapes: (int + real) = k  or (int + real) < 0
+        def try_int_plus_real_vs_constant(a, b, rel):
+            # a = plus(int, real) and b = constant int/real
+            if a.is_plus():
+                terms = flatten_plus(a)
+                try:
+                    ints, reals, consts = split_by_type(terms)
+                except ValueError:
+                    return None
+                if len(ints) == 1 and len(reals) == 1 and (b.is_constant()):
+                    xi = ints[0]; xr = reals[0]
+                    # equality cases with integer constants
+                    if rel == "eq" and b.is_int_constant():
+                        k = b  # Int(k)
+                        # if k is 0 -> xi=0 and xr=0
+                        # if k is 1 -> xi=1 and xr=0 (assumed fractional domain [0,1) for xr)
+                        if int(str(k.constant_value())) == 0:
+                            return And(Equals(xi, Int(0)), Equals(xr, Real(0)))
+                        if int(str(k.constant_value())) == 1:
+                            return And(Equals(xi, Int(1)), Equals(xr, Real(0)))
+                    # inequality case (int + real) < 0 -> int < 0
+                    if rel == "lt" and b.is_int_constant() and int(str(b.constant_value())) == 0:
+                        return LT(xi, Int(0))
+            return None
+
+        # try both orientations
+        if atom.is_equals():
+            # equality
+            # 1) (int+real) = 0  or = 1
+            r = try_int_plus_real_vs_constant(lhs, rhs, "eq") or try_int_plus_real_vs_constant(rhs, lhs, "eq")
+            if r is not None:
+                return r
+
+        if atom.is_le():
+            r = try_int_plus_real_vs_constant(lhs, rhs, "lt") or try_int_plus_real_vs_constant(rhs, lhs, "lt")
+            if r is not None:
+                return r
+
+        # Case C: xint + xreal + yint + yreal = zint + zreal
+        # detect exact pattern: lhs has 4 symbol terms (2 ints,2 reals), rhs has 2 (1 int,1 real)
+        if atom.is_equals():
+            if lhs.is_plus() and rhs.is_plus():
+                lhs_terms = flatten_plus(lhs)
+                rhs_terms = flatten_plus(rhs)
+                try:
+                    li, lr, _ = split_by_type(lhs_terms)
+                    ri, rr, _ = split_by_type(rhs_terms)
+                except ValueError:
+                    li = lr = ri = rr = []
+                if len(li) == 2 and len(lr) == 2 and len(ri) == 1 and len(rr) == 1:
+                    # name the symbols
+                    xint, yint = li[0], li[1]
+                    xreal, yreal = lr[0], lr[1]
+                    zint = ri[0]
+                    zreal = rr[0]
+                    # build R = xreal + yreal
+                    R = Plus(xreal, yreal)
+                    # case1: R < 1 -> xint + yint = zint  AND  xreal + yreal = zreal
+                    case1 = Implies(LT(R, Real(1)),
+                                    And(Equals(Plus(xint, yint), zint),
+                                        Equals(R, zreal)))
+                    # case2: R >= 1 -> xint + yint + 1 = zint  AND  xreal + yreal - 1 = zreal
+                    case2 = Implies(GE(R, Real(1)),
+                                    And(Equals(Plus(Plus(xint, yint), Int(1)), zint),
+                                        Equals(Minus(R, Real(1)), zreal)))
+                    return And(case1, case2)
+
+        # Case F: xint + xreal = floor(yint + yreal)
+        if atom.is_equals():
+            # lhs must be plus of int+real
+            if lhs.is_plus():
+                try:
+                    li, lr, _ = split_by_type(flatten_plus(lhs))
+                except ValueError:
+                    li = lr = []
+                if len(li) == 1 and len(lr) == 1:
+                    xi, xr = li[0], lr[0]
+                    # detect floor-like RHS:
+                    if rhs.is_function_application():
+                        if rhs.is_toint():
+                            arg = rhs.args()[0]
+                            # expect arg = yint + yreal
+                            if arg.is_plus():
+                                try:
+                                    yi_list, yr_list, _ = split_by_type(flatten_plus(arg))
+                                except ValueError:
+                                    yi_list = yr_list = []
+                                if len(yi_list) == 1 and len(yr_list) == 1:
+                                    yi = yi_list[0]
+                                    # rewrite: xreal = 0 /\ xint = yi
+                                    return And(Equals(xr, Real(0)), Equals(xi, yi))
+
+        raise ValueError(f"Atom {atom.serialize()} did not match any supported left-hand shape")
     return map_atoms(f, rewrite_atom)
 
-def compute_decomposition(f):
-    f_new = make_input_format(f)
-    f_new = split_int_real(f)
-    return decompose(f_new)
+def compute_seperation(f):
+    f_new = f
+
+    # Only f_new should appear here
+
+    print(f_new.serialize())
+    f_new = make_input_format(f_new)
+    print(f"Input format: {f_new.serialize()}")
+    f_new, new_reals = split_int_real(f_new)
+    print(f"Real split: {f_new.serialize()}")
+    f_new = decompose(f_new)
+    print(f"Decompose: {f_new.serialize()}")
+
+    return And(f_new, *[And(LE(0, r), LT(r, 1))for r in new_reals])
+
+
+if __name__ == "__main__":
+    x = Symbol("x", REAL)
+    y = Symbol("y", REAL)
+
+    # 2. Define the input formula
+    # f = 2*x + (-0.5)*y <= 3
+    two_x = Times(Real(2), x)
+    half_y = Times(Real(-0.5), y)
+    lhs = Plus(two_x, half_y)
+    rhs = Real(3)
+    
+    original_formula = LT(lhs, rhs)
+    
+    # 3. Run the complete decomposition process
+    # This is the main function from your script
+    decomposed_formula = compute_seperation(original_formula)
+    print(decomposed_formula.serialize())

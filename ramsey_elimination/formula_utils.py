@@ -90,7 +90,7 @@ def map_atoms(formula: ExtendedFNode, f) -> ExtendedFNode:
         args = tuple(map_atoms(arg, f) for arg in formula.args())
         return create_node(formula.node_type(), args, formula._content.payload) 
 
-def map_arithmetic_atom(atom: ExtendedFNode, f: Callable[[ExtendedFNode]]) -> ExtendedFNode:
+def map_arithmetic_atom(atom: ExtendedFNode, f: Callable[[ExtendedFNode], ExtendedFNode]) -> ExtendedFNode:
 
     if atom.is_symbol() or atom.is_algebraic_constant():
         return f(atom)
