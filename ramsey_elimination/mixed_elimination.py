@@ -8,7 +8,7 @@ import pysmt.operators as operators
 from ramsey_elimination.simplifications import arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import ToInt
-from ramsey_elimination.formula_utils import map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
+from ramsey_elimination.formula_utils import generic_recursor, map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
 
 from math import floor, lcm
 from fractions import Fraction
@@ -148,10 +148,22 @@ def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tupl
         return sum_var, constraints
 
     # a < 0 => neg + sum_var = 0
-    neg = cast(ExtendedFNode, FreshSymbol(INT))
+    neg = cast(ExtendedFNode, FreshSymbol(symbol_type))
     constraints.append(make_plus_equals(neg, sum_var, zero))
     return neg, constraints
 
+def clean_floors(f: ExtendedFNode) -> ExtendedFNode:
+    extra_constraints = []
+    def _cleaner(symbol: ExtendedFNode):
+        if symbol.is_toint():
+            inner = FreshSymbol(REAL)
+            inner_constraint = Equals(inner, symbol.arg(0)) 
+            outer : ExtendedFNode = FreshSymbol(INT) # type: ignore
+            outer_constraint = Equals(outer, ToInt(inner))
+            extra_constraints.extend((inner_constraint, outer_constraint))
+            return outer
+
+    return And(generic_recursor(f, _cleaner), *extra_constraints) # type: ignore
 
 def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
@@ -500,8 +512,7 @@ def compute_seperation(f):
     f_new = f
 
     # Only f_new should appear here
-
-    print(f_new.serialize())
+    f_new = clean_floors(f_new)
     f_new = make_input_format(f_new)
     f_new, new_reals = split_int_real(f_new)
     f_new = decompose(f_new)

@@ -1,4 +1,4 @@
-from typing import Callable, Mapping, Set, Tuple, Union, cast, Dict
+from typing import Callable, Mapping, Optional, Set, Tuple, Union, cast, Dict
 
 from pysmt.fnode import FNode
 import pysmt.typing as typ
@@ -8,7 +8,7 @@ from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.formula import ExtendedFormulaManager
-from ramsey_extensions.operators import MOD_NODE_TYPE
+from ramsey_extensions.operators import MOD_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod
 
 def _vector(name: str, length: int, T: typ.PySMTType):
@@ -98,6 +98,11 @@ def map_arithmetic_atom(atom: ExtendedFNode, f: Callable[[ExtendedFNode], Extend
         args = tuple(map_arithmetic_atom(arg, f) for arg in atom.args())
         return create_node(atom.node_type(), args, atom._content.payload) 
 
+def generic_recursor(formula: ExtendedFNode, f: Callable[[ExtendedFNode], Optional[ExtendedFNode]]) -> ExtendedFNode:
+    if x := f(formula):
+        return x
+    args = tuple(generic_recursor(arg, f) for arg in formula.args())
+    return create_node(formula.node_type(), args, formula._content.payload) 
 
 def create_node(node_type, args, payload=None) -> ExtendedFNode:
     mngr = cast(ExtendedFormulaManager, get_env().formula_manager)
