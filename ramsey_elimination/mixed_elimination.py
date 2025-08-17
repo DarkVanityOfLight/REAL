@@ -14,7 +14,7 @@ from math import floor, lcm
 from fractions import Fraction
 
 def make_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(symbol_type)
+    symbol = FreshSymbol(symbol_type, f"zero_{symbol_type}_%s")
     match symbol_type:
         case _IntType():
             return Equals(symbol, Int(0)), symbol #type: ignore
@@ -24,7 +24,7 @@ def make_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
             raise Exception(f"Could not create symbol with type {symbol_type.name}")
 
 def make_one(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(symbol_type)
+    symbol = FreshSymbol(symbol_type, f"one_{symbol_type}_%s")
     match symbol_type:
         case _IntType():
             return Equals(symbol, Int(1)), symbol #type: ignore
@@ -47,7 +47,7 @@ def make_powers_by_doubling(base: ExtendedFNode, count: int, symbol_type: PySMTT
     constraints: List[ExtendedFNode] = []
     powers = [base]
     for k in range(1, count):
-        pk = cast(ExtendedFNode, FreshSymbol(symbol_type))
+        pk = cast(ExtendedFNode, FreshSymbol(symbol_type, f"2^{k}_{symbol_type}_%s"))
         constraints.append(make_plus_equals(powers[k-1], powers[k-1], pk))
         powers.append(pk)
     return powers, constraints
@@ -62,7 +62,7 @@ def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: Exten
     sum_var = zero
     for i, bit in enumerate(bits):
         if bit == "1":
-            tmp = cast(ExtendedFNode, FreshSymbol(symbol_type))
+            tmp = cast(ExtendedFNode, FreshSymbol(symbol_type, f"sum_{symbol_type}%s"))
             constraints.append(make_plus_equals(sum_var, elements[i], tmp))
             sum_var = tmp
     return sum_var, constraints
@@ -106,7 +106,7 @@ def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
         return positive_val, constraints
 
     # n < 0 -> create negative by: neg + positive_val = 0
-    negative_val = cast(ExtendedFNode, FreshSymbol(INT))
+    negative_val = cast(ExtendedFNode, FreshSymbol(INT, "what_is_this_%s"))
     constraints.append(make_plus_equals(negative_val, positive_val, var0))
     return negative_val, constraints
 
@@ -129,7 +129,7 @@ def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tupl
         if a > 0:
             return x, constraints
         # a == -1  => neg + x = 0
-        neg = cast(ExtendedFNode, FreshSymbol(symbol_type))
+        neg = cast(ExtendedFNode, FreshSymbol(symbol_type, f"{symbol_type}%s"))
         constraints.append(make_plus_equals(neg, x, zero))
         return neg, constraints
 
@@ -148,7 +148,7 @@ def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tupl
         return sum_var, constraints
 
     # a < 0 => neg + sum_var = 0
-    neg = cast(ExtendedFNode, FreshSymbol(symbol_type))
+    neg = cast(ExtendedFNode, FreshSymbol(symbol_type, f"{sum_var.symbol_name()}_{symbol_type}%s"))
     constraints.append(make_plus_equals(neg, sum_var, zero))
     return neg, constraints
 
@@ -156,9 +156,9 @@ def clean_floors(f: ExtendedFNode) -> ExtendedFNode:
     extra_constraints = []
     def _cleaner(symbol: ExtendedFNode):
         if symbol.is_toint():
-            inner = FreshSymbol(REAL)
+            inner = FreshSymbol(REAL, f"innerfloor_%s")
             inner_constraint = Equals(inner, symbol.arg(0)) 
-            outer : ExtendedFNode = FreshSymbol(INT) # type: ignore
+            outer : ExtendedFNode = FreshSymbol(INT, f"outer_floor%s") # type: ignore
             outer_constraint = Equals(outer, ToInt(inner))
             extra_constraints.extend((inner_constraint, outer_constraint))
             return outer
@@ -285,8 +285,8 @@ def split_int_real(f):
     new_reals = []
     def atom_rewriter(op: ExtendedFNode) -> ExtendedFNode:
         if op.is_symbol() and op.get_type() == REAL:
-            i = FreshSymbol(INT)
-            r = FreshSymbol(REAL)
+            i = FreshSymbol(INT, f"{op.symbol_name()}_int%s")
+            r = FreshSymbol(REAL, f"{op.symbol_name()}_real%s")
             new_reals.append(r)
             return Plus(ToReal(i), r) #type: ignore
         else:
