@@ -444,57 +444,43 @@ def decompose(f):
             # If the number of reals on the LHS is not 1 or 2, we can't match.
             return None
 
-        # Pattern: xi + xr = floor(yi + yr) - now handles ToReal transparently
+    # Handles two patterns:
+        # 1. xi + xr = floor(yint + yreal)  ->  xr = 0 AND xi = yint
+        # 2. xint = floor(yint + yreal)    ->  xint = yint
         def match_floor_eq(a, b):
-            if not (b.is_function_application() and b.is_toint()):
-                return None
-                
-            a_analysis = analyze_sum_terms(a)
-            if not a_analysis:
-                return None
-                
-            a_ints, a_reals, _ = a_analysis
-            if len(a_ints) != 1 or len(a_reals) != 1:
+            # The caller will try both (a, b) and (b, a), so we only
+            # need to match one direction, e.g., where 'b' is the floor term.
+            if not b.is_toint():
                 return None
             
+            # Analyze the floor argument, which must be `yint + yreal`
             floor_arg = b.args()[0]
             b_analysis = analyze_sum_terms(floor_arg)
             if not b_analysis:
                 return None
-                
-            b_ints, _, _ = b_analysis
-            if len(b_ints) != 1:
+            
+            b_ints, b_reals, _ = b_analysis
+            if len(b_ints) != 1 or len(b_reals) != 1:
                 return None
-                
-            xi, xr = a_ints[0], a_reals[0]
-            yi = b_ints[0]
-            return And(Equals(xr, Real(0)), Equals(xi, yi))
+            yint = b_ints[0]
 
-        # Pattern: (real + ToReal(int)) = real_constant
-        def match_real_toreal_eq_const(a, b):
-            if not (a.is_plus() and b.is_constant()):
-                return None
-            terms = flatten_plus(a)
-            if len(terms) != 2:
-                return None
+            # Now, check the structure of 'a' to determine the pattern.
             
-            # Look for one real variable and one ToReal(int)
-            real_var = None
-            int_in_toreal = None
+            # Pattern 1: a is a sum `xi + xr`
+            a_analysis = analyze_sum_terms(a)
+            if a_analysis:
+                a_ints, a_reals, _ = a_analysis
+                if len(a_ints) == 1 and len(a_reals) == 1:
+                    xi, xr = a_ints[0], a_reals[0]
+                    # Rewrite: xi + xr = floor(yint + yreal)
+                    return And(Equals(xr, Real(0)), Equals(xi, yint))
             
-            for term in terms:
-                if term.is_function_application() and term.is_toint():
-                    int_in_toreal = term.args()[0]
-                elif not term.is_constant():  # assume it's a real variable
-                    real_var = term
-            
-            if real_var is None or int_in_toreal is None:
-                return None
-            
-            # (real + ToReal(int)) = 0 -> real = 0 and int = 0
-            if b.constant_value() == 0:
-                return And(Equals(real_var, Real(0)), Equals(int_in_toreal, Int(0)))
-            
+            # Pattern 2: a is a simple integer variable `xint`
+            if not a.is_plus() and a.get_type() == INT:
+                xint = a
+                # Rewrite: xint = floor(yint + yreal)
+                return Equals(xint, yint)
+
             return None
 
         # Try all patterns
