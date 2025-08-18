@@ -4,10 +4,12 @@ from pysmt.fnode import FNode
 from pysmt.shortcuts import GE, LE, LT, And, Equals, Exists, FreshSymbol, Implies, Int, Minus, Not, Or, Plus, Real, Symbol, Times, ToReal, substitute
 from pysmt.typing import INT, REAL, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
+import pysmt.typing as typ
 
+from ramsey_elimination.existential_elimination import eliminate_mixed_existential_quantifier
 from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
 from ramsey_elimination.real_elimination import eliminate_ramsey_real, full_ramsey_elimination_real
-from ramsey_elimination.simplifications import arithmetic_solver
+from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import Ramsey, ToInt
 from ramsey_elimination.formula_utils import bool_vector, generic_recursor, map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
@@ -504,7 +506,7 @@ def decompose(f):
     
     return map_atoms(f, rewrite_atom)
 
-def compute_seperation(f):
+def compute_seperation(f) -> ExtendedFNode:
     f_new = f
 
     # Only f_new should appear here
@@ -513,7 +515,7 @@ def compute_seperation(f):
     f_new, new_reals = split_int_real(f_new)
     f_new = decompose(f_new)
 
-    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals])
+    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals]) #type: ignore
 
 
 def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
@@ -536,8 +538,9 @@ def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
     beta = And([Implies(qs[i], real_atoms[i]) for i in range(len(qs))])
 
 
-    int_ram = full_ramsey_elimination_int(Ramsey(..., ..., alpha))
-    real_ram = full_ramsey_elimination_real(Ramsey(..., ..., beta))
+    real_ram, int_ram = (formula, formula.arg(0)) if formula.quantifier_vars()[0][0].get_type() == typ.REAL else (formula.arg(0), formula)
+    int_ram = full_ramsey_elimination_int(Ramsey(int_ram.quantifier_vars()[0], int_ram.quantifier_vars()[1], alpha))
+    real_ram = full_ramsey_elimination_real(Ramsey(real_ram.quantifier_vars()[0], real_ram.quantifier_vars()[1], beta))
 
     r = Symbol("r")
 
@@ -548,6 +551,21 @@ def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
     p2 = Or(int_ram, And(r, Exists(int_ram.quantifier_vars()[0], alpha_r)))
 
     return Exists((ps + qs + r), And(prop_skeleton, p1, p2)) #type: ignore
+
+def full_ramsey_elimination_mixed(qformula: ExtendedFNode):
+
+    def _rewrite_le(atom: ExtendedFNode):
+        if atom.is_le():
+            return Or(LT(atom.arg(0), atom.arg(1)), Equals(atom.arg(0), atom.arg(1)))
+        else:
+            return atom
+
+    no_le = map_atoms(qformula, _rewrite_le)
+    inp = make_real_input_format(no_le) # aka push negations inside
+    sep = compute_seperation(inp)
+    no_ex = eliminate_mixed_existential_quantifier(sep)
+    return eliminate_ramsey_mixed(no_ex)
+    
 
 if __name__ == "__main__":
 
