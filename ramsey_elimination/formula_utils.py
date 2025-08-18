@@ -1,9 +1,9 @@
-from typing import Callable, Mapping, Optional, Set, Tuple, Union, cast, Dict
+from typing import Callable, List, Mapping, Optional, Set, Tuple, Union, cast, Dict
 
 from pysmt.fnode import FNode
 import pysmt.typing as typ
 import pysmt.operators as operators
-from pysmt.operators import EQUALS, NOT,SYMBOL
+from pysmt.operators import EQUALS, NOT,SYMBOL, TOREAL
 from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
 
 from ramsey_extensions.fnode import ExtendedFNode
@@ -11,8 +11,8 @@ from ramsey_extensions.formula import ExtendedFormulaManager
 from ramsey_extensions.operators import MOD_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod
 
-def _vector(name: str, length: int, T: typ.PySMTType):
-    return [Symbol(f"{name}_{i}", T) for i in range(length)]
+def _vector(name: str, length: int, T: typ.PySMTType) -> List[ExtendedFNode]:
+    return [Symbol(f"{name}_{i}", T) for i in range(length)] #type: ignore
 
 def real_vector(name: str, length: int):
     return _vector(name, length, typ.REAL)
@@ -169,6 +169,8 @@ def ast_to_terms(node: ExtendedFNode
                     const *= c
                 return terms, const
 
+            case operators.TOREAL:
+                return process(n.arg(0))
             case _:
                 raise ValueError(f"Unknown node type: {T}")
 
