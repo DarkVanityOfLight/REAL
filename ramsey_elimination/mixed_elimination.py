@@ -1,14 +1,16 @@
 from typing import List, Mapping, Optional, Tuple, cast
-from pysmt import typing
+from pysmt import formula, typing
 from pysmt.fnode import FNode
-from pysmt.shortcuts import GE, LE, LT, And, Equals, FreshSymbol, Implies, Int, Minus, Plus, Real, Symbol, Times, ToReal
+from pysmt.shortcuts import GE, LE, LT, And, Equals, Exists, FreshSymbol, Implies, Int, Minus, Not, Or, Plus, Real, Symbol, Times, ToReal, substitute
 from pysmt.typing import INT, REAL, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
 
+from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
+from ramsey_elimination.real_elimination import eliminate_ramsey_real, full_ramsey_elimination_real
 from ramsey_elimination.simplifications import arithmetic_solver
 from ramsey_extensions.fnode import ExtendedFNode
-from ramsey_extensions.shortcuts import ToInt
-from ramsey_elimination.formula_utils import generic_recursor, map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
+from ramsey_extensions.shortcuts import Ramsey, ToInt
+from ramsey_elimination.formula_utils import bool_vector, generic_recursor, map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
 
 from math import floor, lcm
 from fractions import Fraction
@@ -513,6 +515,39 @@ def compute_seperation(f):
 
     return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals])
 
+
+def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
+
+    formula = qformula.arg(0).arg(0)
+
+    eqs, mods, ineqs = collect_atoms(cast(ExtendedFNode, formula))
+
+    real_atoms = [atom for atom in eqs + ineqs if atom.arg(0).get_type() == REAL]
+    int_atoms = list(mods) + [atom for atom in eqs + ineqs if atom.arg(0).get_type() == INT]
+
+    ps = bool_vector("p", len(int_atoms))
+    qs = bool_vector("q", len(real_atoms))
+
+    int_map = {atom: p for atom, p in zip(int_atoms, ps)}
+    real_map = {atom: q for atom, q in zip(real_atoms, qs)}
+    prop_skeleton = formula.substitute(int_map | real_map)
+
+    alpha = And([Implies(ps[i], int_atoms[i]) for i in range(len(ps))])
+    beta = And([Implies(qs[i], real_atoms[i]) for i in range(len(qs))])
+
+
+    int_ram = full_ramsey_elimination_int(Ramsey(..., ..., alpha))
+    real_ram = full_ramsey_elimination_real(Ramsey(..., ..., beta))
+
+    r = Symbol("r")
+
+    alpha_r = substitute(alpha, {y: x for (x, y) in zip(*int_ram.quantifier_vars())})
+    beta_r = substitute(beta, {y: x for (x, y) in zip(*real_ram.quantifier_vars())})
+
+    p1 = Or(real_ram, And(Not(r), Exists(real_ram.quantifier_vars()[0], beta_r)))
+    p2 = Or(int_ram, And(r, Exists(int_ram.quantifier_vars()[0], alpha_r)))
+
+    return Exists((ps + qs + r), And(prop_skeleton, p1, p2)) #type: ignore
 
 if __name__ == "__main__":
 
