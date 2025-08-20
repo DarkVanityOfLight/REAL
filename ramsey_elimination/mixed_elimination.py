@@ -1,4 +1,4 @@
-from typing import List, Mapping, Optional, Tuple, cast
+from typing import List, Mapping, Optional, Set, Tuple, cast
 from pysmt import formula, typing
 from pysmt.fnode import FNode
 from pysmt.shortcuts import GE, LE, LT, And, Equals, Exists, FreshSymbol, Implies, Int, Minus, Not, Or, Plus, Real, Symbol, Times, ToReal, substitute
@@ -285,18 +285,23 @@ def make_input_format(f):
     
     return And(new_f, *additional_constraints)
 
-def split_int_real(f):
+def split_int_real(f, track_mapping: Set[ExtendedFNode]):
     new_reals = []
+    tracked = {}
     def atom_rewriter(op: ExtendedFNode) -> ExtendedFNode:
         if op.is_symbol() and op.get_type() == REAL:
             i = FreshSymbol(INT, f"{op.symbol_name()}_int%s")
             r = FreshSymbol(REAL, f"{op.symbol_name()}_real%s")
+
+            if op in track_mapping:
+                tracked[op] = (i, r)
+
             new_reals.append(r)
             return Plus(ToReal(i), r) #type: ignore
         else:
             return op
 
-    return map_arithmetic_atom(f, atom_rewriter), new_reals
+    return map_arithmetic_atom(f, atom_rewriter), new_reals, tracked
 
 
 def flatten_plus(expr: ExtendedFNode) -> List[ExtendedFNode]:
@@ -506,26 +511,26 @@ def decompose(f):
     
     return map_atoms(f, rewrite_atom)
 
-def compute_seperation(f) -> ExtendedFNode:
+def compute_seperation(f, free_vars: Set[ExtendedFNode]) -> Tuple[ExtendedFNode, Mapping[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]]:
     f_new = f
 
     # Only f_new should appear here
     f_new = clean_floors(f_new)
     f_new = make_input_format(f_new)
-    f_new, new_reals = split_int_real(f_new)
+    f_new, new_reals, free_mapping = split_int_real(f_new, free_vars)
     f_new = decompose(f_new)
 
-    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals]) #type: ignore
+    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals]), free_mapping #type: ignore
 
 
 def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
 
     formula = qformula.arg(0).arg(0)
 
-    eqs, mods, ineqs = collect_atoms(cast(ExtendedFNode, formula))
+    eqs, _, ineqs = collect_atoms(cast(ExtendedFNode, formula))
 
     real_atoms = [atom for atom in eqs + ineqs if atom.arg(0).get_type() == REAL]
-    int_atoms = list(mods) + [atom for atom in eqs + ineqs if atom.arg(0).get_type() == INT]
+    int_atoms = [atom for atom in eqs + ineqs if atom.arg(0).get_type() == INT]
 
     ps = bool_vector("p", len(int_atoms))
     qs = bool_vector("q", len(real_atoms))
@@ -552,6 +557,18 @@ def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
 
     return Exists((ps + qs + r), And(prop_skeleton, p1, p2)) #type: ignore
 
+def redo_frees(f: ExtendedFNode, mapping: Mapping[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]) -> ExtendedFNode:
+    
+    substitution_map = {
+        int_part: key if key.symbol_type() == INT else ToInt(key)
+        for key, (int_part, _) in mapping.items()
+    } | {
+        real_part: Minus(key, ToReal(ToInt(key)))
+        for key, (_, real_part) in mapping.items()
+    }
+
+    return f.substitute(substitution_map)
+
 def full_ramsey_elimination_mixed(qformula: ExtendedFNode):
 
     def _rewrite_le(atom: ExtendedFNode):
@@ -560,9 +577,13 @@ def full_ramsey_elimination_mixed(qformula: ExtendedFNode):
         else:
             return atom
 
+    free_vars = qformula.get_free_variables()
+
     no_le = map_atoms(qformula, _rewrite_le)
     inp = make_real_input_format(no_le) # aka push negations inside
-    sep = compute_seperation(inp)
+
+    sep = redo_frees(*compute_seperation(inp, free_vars))
+
     no_ex = eliminate_mixed_existential_quantifier(sep)
     return eliminate_ramsey_mixed(no_ex)
     
