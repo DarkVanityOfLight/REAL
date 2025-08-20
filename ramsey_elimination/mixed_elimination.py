@@ -1,618 +1,727 @@
 from typing import List, Mapping, Optional, Set, Tuple, cast
-from pysmt import formula, typing
-from pysmt.fnode import FNode
-from pysmt.shortcuts import GE, LE, LT, And, Equals, Exists, FreshSymbol, Implies, Int, Minus, Not, Or, Plus, Real, Symbol, Times, ToReal, substitute
+from pysmt.shortcuts import (GE, LE, LT, And, Equals, Exists, FreshSymbol, 
+                            Implies, Int, Minus, Not, Or, Plus, Real, Symbol, 
+                            Times, ToReal, substitute)
 from pysmt.typing import INT, REAL, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
 import pysmt.typing as typ
 
 from ramsey_elimination.existential_elimination import eliminate_mixed_existential_quantifier
 from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
-from ramsey_elimination.real_elimination import eliminate_ramsey_real, full_ramsey_elimination_real
+from ramsey_elimination.real_elimination import full_ramsey_elimination_real
 from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import Ramsey, ToInt
-from ramsey_elimination.formula_utils import bool_vector, generic_recursor, map_arithmetic_atom, map_atoms, ast_to_terms, collect_atoms
+from ramsey_elimination.formula_utils import (bool_vector, generic_recursor, 
+                                            map_arithmetic_atom, map_atoms, 
+                                            ast_to_terms, collect_atoms)
 
-from math import floor, lcm
+from math import lcm
 from fractions import Fraction
 
-def make_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(symbol_type, f"zero_{symbol_type}_%s")
-    match symbol_type:
-        case _IntType():
-            return Equals(symbol, Int(0)), symbol #type: ignore
-        case _RealType():
-            return Equals(symbol, Real(0)), symbol #type: ignore
-        case _:
-            raise Exception(f"Could not create symbol with type {symbol_type.name}")
 
-def make_one(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
-    symbol = FreshSymbol(symbol_type, f"one_{symbol_type}_%s")
+def create_typed_symbol(value: int, symbol_type: PySMTType, name_prefix: str) -> Tuple[ExtendedFNode, ExtendedFNode]:
+    """Create a symbol of given type with a constraint that it equals the given value."""
+    symbol = FreshSymbol(symbol_type, f"{name_prefix}_{symbol_type}_%s")
+    
+    constraint: ExtendedFNode
     match symbol_type:
-        case _IntType():
-            return Equals(symbol, Int(1)), symbol #type: ignore
-        case _RealType():
-            return Equals(symbol, Real(1)), symbol #type: ignore
-        case _:
-            raise Exception(f"Could not create symbol with type {symbol_type.name}")
+        case _IntType(): constraint = Equals(symbol, Int(value)) #type: ignore
+        case _RealType(): constraint = Equals(symbol, Real(value)) #type: ignore
+        case _: raise ValueError(f"Unsupported type: {symbol_type.name}")
+    
+    return constraint, symbol #type: ignore
 
-def make_plus_equals(x, y, z) -> ExtendedFNode:
+
+def create_zero(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
+    """Create a zero symbol of the given type."""
+    return create_typed_symbol(0, symbol_type, "zero")
+
+
+def create_one(symbol_type: PySMTType) -> Tuple[ExtendedFNode, ExtendedFNode]:
+    """Create a one symbol of the given type."""
+    return create_typed_symbol(1, symbol_type, "one")
+
+
+def create_addition_constraint(x: ExtendedFNode, y: ExtendedFNode, z: ExtendedFNode) -> ExtendedFNode:
+    """Create constraint: x + y = z"""
     return Equals(Plus(x, y), z) #type: ignore
 
-def make_floor(x, y) -> ExtendedFNode:
+
+def create_floor_constraint(x: ExtendedFNode, y: ExtendedFNode) -> ExtendedFNode:
+    """Create constraint: x = floor(y)"""
     return Equals(x, ToInt(y)) #type: ignore
 
-def make_powers_by_doubling(base: ExtendedFNode, count: int, symbol_type: PySMTType) -> Tuple[List[ExtendedFNode], List[ExtendedFNode]]:
+
+def build_powers_by_doubling(base: ExtendedFNode, count: int, symbol_type: PySMTType) -> Tuple[List[ExtendedFNode], List[ExtendedFNode]]:
     """
-    Build [base, 2*base, 4*base, ...] up to `count` elements.
-    Returns (powers_list, constraints_to_construct_them).
+    Build sequence [base, 2*base, 4*base, 8*base, ...] up to count elements.
+    Returns (power_symbols, construction_constraints).
     """
-    constraints: List[ExtendedFNode] = []
+    if count <= 0:
+        return [], []
+    
     powers = [base]
-    for k in range(1, count):
-        pk = cast(ExtendedFNode, FreshSymbol(symbol_type, f"2^{k}_{symbol_type}_%s"))
-        constraints.append(make_plus_equals(powers[k-1], powers[k-1], pk))
-        powers.append(pk)
+    constraints = []
+    
+    for i in range(1, count):
+        power_symbol: ExtendedFNode = FreshSymbol(symbol_type, f"power_2_{i}_%s") #type: ignore
+        # power_symbol = powers[i-1] + powers[i-1] = 2 * powers[i-1]
+        constraint = create_addition_constraint(powers[i-1], powers[i-1], power_symbol)
+        
+        powers.append(power_symbol)
+        constraints.append(constraint)
+    
     return powers, constraints
 
-def sum_selected_from_zero(bits: str, elements: List[ExtendedFNode], zero: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+
+def sum_selected_terms(bit_pattern: str, terms: List[ExtendedFNode], 
+                      zero_symbol: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
-    Sum the elements selected by LSB-first `bits` starting from `zero`.
-    Returns (sum_symbol, constraints).
-    If no bit is 1, returns zero.
+    Sum terms selected by bit_pattern (LSB-first), starting from zero_symbol.
+    Returns (result_symbol, construction_constraints).
     """
-    constraints: List[ExtendedFNode] = []
-    sum_var = zero
-    for i, bit in enumerate(bits):
-        if bit == "1":
-            tmp = cast(ExtendedFNode, FreshSymbol(symbol_type, f"sum_{symbol_type}%s"))
-            constraints.append(make_plus_equals(sum_var, elements[i], tmp))
-            sum_var = tmp
-    return sum_var, constraints
+    if not any(bit == "1" for bit in bit_pattern):
+        return zero_symbol, []
+    
+    current_sum : ExtendedFNode = zero_symbol
+    constraints = []
+    
+    for i, bit in enumerate(bit_pattern):
+        if bit == "1" and i < len(terms):
+            next_sum: ExtendedFNode = FreshSymbol(symbol_type, f"partial_sum_{i}_%s") #type: ignore
+            constraint = create_addition_constraint(current_sum, terms[i], next_sum)
+            constraints.append(constraint)
+            current_sum = next_sum
+    
+    return current_sum, constraints
 
 
-
-def make_constant_int(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def build_integer_constant(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
-    Builds constraints to represent any integer n using primitives:
-      x = 0, x = 1, x + y = z
-    Returns (symbol_representing_n, constraints)
+    Build constraints to represent integer n using only primitives:
+    x = 0, x = 1, x + y = z
     """
-    # Special-case zero
     if n == 0:
-        c0, var0 = make_zero(INT)
-        return var0, [c0]
-
-    constraints: List[ExtendedFNode] = []
-
-    # Ensure 1 and 0 are available (we'll need both for construction)
-    c1, one = make_one(INT)
-    c0, var0 = make_zero(INT)
-    constraints.extend([c1, c0])
-
+        zero_constraint, zero_symbol = create_zero(INT)
+        return zero_symbol, [zero_constraint]
+    
+    constraints = []
+    
+    # Create basic symbols
+    zero_constraint, zero_symbol = create_zero(INT)
+    one_constraint, one_symbol = create_one(INT)
+    constraints.extend([zero_constraint, one_constraint])
+    
     abs_n = abs(n)
-
-    # positive construction
+    
     if abs_n == 1:
-        positive_val = one
+        positive_result = one_symbol
     else:
-        bits = bin(abs_n)[2:][::-1]  # LSB-first
-        # powers p[0]=1, p[1]=2, ...
-        p, p_constraints = make_powers_by_doubling(one, len(bits), INT)
-        constraints.extend(p_constraints)
-
-        positive_val, sum_constraints = sum_selected_from_zero(bits, p, var0, INT)
+        # Binary decomposition (LSB first)
+        binary_bits = bin(abs_n)[2:][::-1]
+        
+        # Build powers of 2: [1, 2, 4, 8, ...]
+        powers, power_constraints = build_powers_by_doubling(one_symbol, len(binary_bits), INT)
+        constraints.extend(power_constraints)
+        
+        # Sum selected powers based on binary representation
+        positive_result, sum_constraints = sum_selected_terms(binary_bits, powers, zero_symbol, INT)
         constraints.extend(sum_constraints)
-
-    # if n >= 0 return positive_val
+    
     if n > 0:
-        return positive_val, constraints
+        return positive_result, constraints
+    
+    # Handle negative: create y such that y + positive_result = 0
+    negative_symbol : ExtendedFNode = FreshSymbol(INT, "negative_%s") #type: ignore
+    negative_constraint = create_addition_constraint(negative_symbol, positive_result, zero_symbol)
+    constraints.append(negative_constraint)
+    
+    return negative_symbol, constraints
 
-    # n < 0 -> create negative by: neg + positive_val = 0
-    negative_val = cast(ExtendedFNode, FreshSymbol(INT, "what_is_this_%s"))
-    constraints.append(make_plus_equals(negative_val, positive_val, var0))
-    return negative_val, constraints
 
-
-def make_const_mul_var(a: int, x: ExtendedFNode, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def build_constant_multiplication(coefficient: int, variable: ExtendedFNode, 
+                                 symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
-    Build constraints and a fresh variable representing a * x using doubling + additions.
-    Returns (symbol_for_a_times_x, constraints).
+    Build constraints for coefficient * variable using doubling and addition.
+    Returns (result_symbol, construction_constraints).
     """
-    constraints: List[ExtendedFNode] = []
-
-    # zero helper
-    c0, zero = make_zero(symbol_type)
-    constraints.append(c0)
-
-    # trivial cases
-    if a == 0:
-        return zero, constraints
-    if abs(a) == 1:
-        if a > 0:
-            return x, constraints
-        # a == -1  => neg + x = 0
-        neg = cast(ExtendedFNode, FreshSymbol(symbol_type, f"{symbol_type}%s"))
-        constraints.append(make_plus_equals(neg, x, zero))
-        return neg, constraints
-
-    abs_a = abs(a)
-    bits = bin(abs_a)[2:][::-1]  # LSB-first
-
-    # build multiples m[0]=x, m[1]=2*x, m[2]=4*x, ...
-    m, m_constraints = make_powers_by_doubling(x, len(bits), symbol_type)
-    constraints.extend(m_constraints)
-
-    # sum selected multiples into sum_var starting from zero
-    sum_var, sum_constraints = sum_selected_from_zero(bits, m, zero, symbol_type)
+    constraints = []
+    
+    zero_constraint, zero_symbol = create_zero(symbol_type)
+    constraints.append(zero_constraint)
+    
+    # Handle trivial cases
+    if coefficient == 0:
+        return zero_symbol, constraints
+    
+    if abs(coefficient) == 1:
+        if coefficient > 0:
+            return variable, constraints
+        
+        # coefficient = -1: create neg such that neg + variable = 0
+        negative_symbol : ExtendedFNode = FreshSymbol(symbol_type, f"neg_{variable.symbol_name()}_%s") #type: ignore
+        negative_constraint = create_addition_constraint(negative_symbol, variable, zero_symbol)
+        constraints.append(negative_constraint)
+        return negative_symbol, constraints
+    
+    # General case: binary decomposition
+    abs_coeff = abs(coefficient)
+    binary_bits = bin(abs_coeff)[2:][::-1]  # LSB first
+    
+    # Build multiples: [variable, 2*variable, 4*variable, ...]
+    multiples, multiple_constraints = build_powers_by_doubling(variable, len(binary_bits), symbol_type)
+    constraints.extend(multiple_constraints)
+    
+    # Sum selected multiples
+    positive_result, sum_constraints = sum_selected_terms(binary_bits, multiples, zero_symbol, symbol_type)
     constraints.extend(sum_constraints)
+    
+    if coefficient > 0:
+        return positive_result, constraints
+    
+    # Handle negative coefficient
+    negative_symbol: ExtendedFNode = FreshSymbol(symbol_type, f"neg_{positive_result.symbol_name()}_%s") #type: ignore
+    negative_constraint = create_addition_constraint(negative_symbol, positive_result, zero_symbol)
+    constraints.append(negative_constraint)
+    
+    return negative_symbol, constraints
 
-    if a > 0:
-        return sum_var, constraints
 
-    # a < 0 => neg + sum_var = 0
-    neg = cast(ExtendedFNode, FreshSymbol(symbol_type, f"{sum_var.symbol_name()}_{symbol_type}%s"))
-    constraints.append(make_plus_equals(neg, sum_var, zero))
-    return neg, constraints
-
-def clean_floors(f: ExtendedFNode) -> ExtendedFNode:
+def clean_floor_expressions(formula: ExtendedFNode) -> ExtendedFNode:
+    """Replace ToInt expressions with fresh variables and appropriate constraints."""
     extra_constraints = []
-    def _cleaner(symbol: ExtendedFNode):
-        if symbol.is_toint():
-            inner = FreshSymbol(REAL, f"innerfloor_%s")
-            inner_constraint = Equals(inner, symbol.arg(0)) 
-            outer : ExtendedFNode = FreshSymbol(INT, f"outer_floor%s") # type: ignore
-            outer_constraint = Equals(outer, ToInt(inner))
-            extra_constraints.extend((inner_constraint, outer_constraint))
-            return outer
+    
+    def floor_cleaner(node: ExtendedFNode) -> ExtendedFNode:
+        if node.is_toint():
+            # Create fresh variables for floor operation
+            inner_real : ExtendedFNode = FreshSymbol(REAL, f"floor_input_%s") #type: ignore
+            outer_int : ExtendedFNode = FreshSymbol(INT, f"floor_output_%s") #type: ignore
+            
+            # Add constraints
+            inner_constraint = Equals(inner_real, node.arg(0))
+            floor_constraint = create_floor_constraint(outer_int, inner_real)
+            
+            extra_constraints.extend([inner_constraint, floor_constraint])
+            return outer_int
+        
+        return node
+    
+    cleaned_formula = generic_recursor(formula, floor_cleaner)
+    return And(cleaned_formula, *extra_constraints) if extra_constraints else cleaned_formula #type: ignore
 
-    return And(generic_recursor(f, _cleaner), *extra_constraints) # type: ignore
 
-def make_atom_input_format(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def normalize_arithmetic_atom(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
-    Deconstructs an arithmetic atom (e.g., a*x + b*y <= c) into a canonical atom
-    plus any additional constraints needed to build it using the primitives:
-    x=0, x=1, x+y=z, and x<0.
-
-    Returns:
-        (new_atom, additional_constraints)
+    Transform arithmetic atom into canonical form using only basic primitives.
+    Returns (canonical_atom, construction_constraints).
     """
     left, right = atom.arg(0), atom.arg(1)
-
+    
+    # Skip atoms that already contain floor operations
     if left.is_toint() or right.is_toint():
         return atom, []
-
-    l_coeffs, l_const = ast_to_terms(left)
-    r_coeffs, r_const = ast_to_terms(right)
-
-    # Normalize to: sum(coeffs * var) ~ c
-    coeffs, _, c = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set({}))
-
-    # Scale coefficients to integers
-    l_c_m = 1
-    for coeff in coeffs.values():
-        frac_coeff = Fraction(coeff).limit_denominator()
-        if frac_coeff.denominator != 1:
-            l_c_m = lcm(frac_coeff.denominator, l_c_m)
-
-    scaled_coeffs = [
-        (var, int(Fraction(coeff).limit_denominator() * l_c_m))
+    
+    # Extract coefficients and constants from both sides
+    left_coeffs, left_const = ast_to_terms(left)
+    right_coeffs, right_const = ast_to_terms(right)
+    
+    # Normalize to: sum(coeffs * vars) ~ constant
+    coeffs, _, constant = arithmetic_solver(left_coeffs, left_const, right_coeffs, right_const, set())
+    
+    # Scale to integer coefficients
+    denominators = [Fraction(coeff).limit_denominator().denominator for coeff in coeffs.values()]
+    scale_factor = lcm(*denominators) if denominators else 1
+    
+    scaled_terms = [
+        (var, int(Fraction(coeff).limit_denominator() * scale_factor))
         for var, coeff in coeffs.items()
     ]
-    scaled_c = int(Fraction(c).limit_denominator() * l_c_m)
-
-    constraints = []
-
-    # 1. Build LHS from variables
-    term_symbols = []
-    for var, coeff in scaled_coeffs:
-        term_symbol, mul_atoms = make_const_mul_var(coeff, var, var.symbol_type())
-        constraints.extend(mul_atoms)
-        term_symbols.append(term_symbol)
-
-    if not term_symbols:
-        zero_atom, lhs_symbol = make_zero(INT)
-        constraints.append(zero_atom)
-        sum_typ = INT
-    else:
-        sum_typ = REAL if any(s.get_type() == REAL for s in term_symbols) else INT
-
-        def to_real_if_needed(sym):
-            return ToReal(sym) if (sym.get_type() == INT and sum_typ == REAL) else sym
-
-        current_sum = to_real_if_needed(term_symbols[0])
-
-        for i in range(1, len(term_symbols)):
-            sum_result_symbol = FreshSymbol(sum_typ)
-
-            term_symbol = to_real_if_needed(term_symbols[i])
-
-            plus_atom = make_plus_equals(current_sum, term_symbol, sum_result_symbol)
-            constraints.append(plus_atom)
-            current_sum = sum_result_symbol
-
-        lhs_symbol = current_sum
-
-    # 2. Build RHS constant
-    const_symbol, const_atoms = make_constant_int(scaled_c)
-    constraints.extend(const_atoms)
-    if sum_typ == REAL:
-        const_symbol_real = cast(ExtendedFNode, ToReal(const_symbol))
-        const_symbol = const_symbol_real
-
-    # 3. diff = LHS - RHS
-    neg_const_symbol, neg_const_atoms = make_const_mul_var(-1, const_symbol, sum_typ)
-    constraints.extend(neg_const_atoms)
-
-    diff_symbol = FreshSymbol(sum_typ)
-    diff_atom = make_plus_equals(lhs_symbol, neg_const_symbol, diff_symbol)
-    constraints.append(diff_atom)
-
-    # 4. Canonical constants
-    zero_atom, zero_symbol = make_zero(sum_typ)
-    one_atom, one_symbol = make_one(sum_typ)
-    constraints.extend([zero_atom, one_atom])
-
-    # 5. Create main canonical atom
-    match atom.node_type():
-        case operators.EQUALS:
-            # diff = 0
-            main_atom = make_plus_equals(diff_symbol, zero_symbol, zero_symbol)
-        case operators.LT:
-            # diff < 0
-            match sum_typ:
-                case _IntType():
-                    main_atom = cast(ExtendedFNode, LT(diff_symbol, Int(0)))
-                case _RealType():
-                    main_atom = cast(ExtendedFNode, LT(diff_symbol, Real(0)))
-                case _:
-                    raise Exception(f"Unknown type: {sum_typ}")
-        case _:
-            raise Exception(f"Unkown relation {atom.node_type()}")
-
-    return main_atom, constraints
-
-def make_input_format(f):
-    additional_constraints = []
-
-    def collector(atom):
-        new_atom, constraints = make_atom_input_format(atom) 
-        additional_constraints.extend(constraints)
-        return new_atom
-
-    new_f = map_atoms(f, collector)
+    scaled_constant = int(Fraction(constant).limit_denominator() * scale_factor)
     
-    return And(new_f, *additional_constraints)
+    constraints = []
+    
+    # Build left-hand side from scaled terms
+    if not scaled_terms:
+        lhs_constraint, lhs_symbol = create_zero(INT)
+        constraints.append(lhs_constraint)
+        result_type = INT
+    else:
+        # Determine result type based on variable types
+        has_real = any(var.symbol_type() == REAL for var, _ in scaled_terms)
+        result_type = REAL if has_real else INT
+        
+        # Build each term
+        term_symbols = []
+        for var, coeff in scaled_terms:
+            term_symbol, term_constraints = build_constant_multiplication(coeff, var, var.symbol_type())
+            constraints.extend(term_constraints)
+            
+            # Convert to real if needed
+            if var.symbol_type() == INT and result_type == REAL:
+                term_symbol = ToReal(term_symbol)
+            
+            term_symbols.append(term_symbol)
+        
+        # Sum all terms
+        lhs_symbol: ExtendedFNode = term_symbols[0]
+        for i in range(1, len(term_symbols)):
+            sum_symbol: ExtendedFNode = FreshSymbol(result_type, f"lhs_sum_{i}_%s") #type: ignore
+            sum_constraint = create_addition_constraint(lhs_symbol, term_symbols[i], sum_symbol)
+            constraints.append(sum_constraint)
+            lhs_symbol = sum_symbol
+    
+    # Build right-hand side constant
+    rhs_symbol: ExtendedFNode
+    rhs_symbol, rhs_constraints = build_integer_constant(scaled_constant)
+    constraints.extend(rhs_constraints)
+    
+    if result_type == REAL:
+        rhs_symbol = ToReal(rhs_symbol) #type: ignore
+    
+    # Create difference: lhs - rhs
+    neg_rhs, neg_constraints = build_constant_multiplication(-1, rhs_symbol, result_type)
+    constraints.extend(neg_constraints)
+    
+    diff_symbol: ExtendedFNode = FreshSymbol(result_type, "difference_%s") #type: ignore
+    diff_constraint = create_addition_constraint(lhs_symbol, neg_rhs, diff_symbol)
+    constraints.append(diff_constraint)
+    
+    # Create canonical constants
+    zero_constraint, zero_symbol = create_zero(result_type)
+    constraints.append(zero_constraint)
+    
+    # Build canonical atom based on original relation
+    canonical_atom: ExtendedFNode
+    match atom.node_type():
+        case operators.EQUALS: canonical_atom = create_addition_constraint(diff_symbol, zero_symbol, zero_symbol)
+        case operators.LT: canonical_atom = LT(diff_symbol, Int(0) if result_type == INT else Real(0)) #type: ignore
+        case _: raise ValueError(f"Unsupported relation: {atom.node_type()}")
+    
+    return canonical_atom, constraints
 
-def split_int_real(f, track_mapping: Set[ExtendedFNode]):
-    new_reals = []
-    tracked = {}
-    def atom_rewriter(op: ExtendedFNode) -> ExtendedFNode:
-        if op.is_symbol() and op.get_type() == REAL:
-            i = FreshSymbol(INT, f"{op.symbol_name()}_int%s")
-            r = FreshSymbol(REAL, f"{op.symbol_name()}_real%s")
 
-            if op in track_mapping:
-                tracked[op] = (i, r)
-
-            new_reals.append(r)
-            return Plus(ToReal(i), r) #type: ignore
-        else:
-            return op
-
-    return map_arithmetic_atom(f, atom_rewriter), new_reals, tracked
+def transform_to_input_format(formula: ExtendedFNode) -> ExtendedFNode:
+    """Transform formula to use only basic arithmetic primitives."""
+    additional_constraints = []
+    
+    def atom_transformer(atom: ExtendedFNode) -> ExtendedFNode:
+        normalized_atom, constraints = normalize_arithmetic_atom(atom)
+        additional_constraints.extend(constraints)
+        return normalized_atom
+    
+    transformed_formula = map_atoms(formula, atom_transformer)
+    
+    if additional_constraints:
+        return And(transformed_formula, *additional_constraints) #type: ignore
+    return transformed_formula
 
 
-def flatten_plus(expr: ExtendedFNode) -> List[ExtendedFNode]:
-    """Return a flat list of terms in a + b + c ... (non-recursive for other nodes)."""
+def separate_integer_real_types(formula: ExtendedFNode, 
+                               tracked_vars: Set[ExtendedFNode]) -> Tuple[ExtendedFNode, List[ExtendedFNode], Mapping]:
+    """
+    Split real variables into integer + fractional parts.
+    Returns (transformed_formula, real_fractional_vars, variable_mapping).
+    """
+    fractional_vars = []
+    tracking_map = {}
+    
+    def variable_splitter(node: ExtendedFNode) -> ExtendedFNode:
+        if node.is_symbol() and node.get_type() == REAL:
+            integer_part = FreshSymbol(INT, f"{node.symbol_name()}_int_%s")
+            fractional_part = FreshSymbol(REAL, f"{node.symbol_name()}_frac_%s")
+            
+            if node in tracked_vars:
+                tracking_map[node] = (integer_part, fractional_part)
+            
+            fractional_vars.append(fractional_part)
+            return Plus(ToReal(integer_part), fractional_part) #type: ignore
+        
+        return node
+    
+    transformed = map_arithmetic_atom(formula, variable_splitter)
+    return transformed, fractional_vars, tracking_map
+
+
+def flatten_addition(expr: ExtendedFNode) -> List[ExtendedFNode]:
+    """Flatten nested additions into a list of terms."""
     if expr.is_plus():
-        out = []
-        for a in expr.args():
-            out.extend(flatten_plus(a))
-        return out
+        terms = []
+        for arg in expr.args():
+            terms.extend(flatten_addition(arg))
+        return terms
     return [expr]
 
-def split_by_type(terms: List[ExtendedFNode]) -> Tuple[List[ExtendedFNode], List[ExtendedFNode], ExtendedFNode]:
-    """Split symbol terms into (int_syms, real_syms, const_sum).
-       Assumes constants present only as Int/Real constants (or none).
+
+def categorize_terms_by_type(terms: List[ExtendedFNode]) -> Tuple[List[ExtendedFNode], List[ExtendedFNode], ExtendedFNode]:
     """
-
-    ints: List[ExtendedFNode] = []
-    reals: List[ExtendedFNode] = []
-    const_sum: Optional[ExtendedFNode] = None
-
-    for t in terms:
-        if t.is_toreal():
-            inner = cast(ExtendedFNode, t.args()[0])
-            if inner.is_symbol() and inner.symbol_type() == INT:
-                ints.append(inner)
+    Categorize terms into integer symbols, real symbols, and constants.
+    Returns (integer_terms, real_terms, constant_sum).
+    """
+    integer_terms: List[ExtendedFNode] = []
+    real_terms: List[ExtendedFNode] = []
+    constant_sum: Optional[ExtendedFNode] = None
+    
+    for term in terms:
+        if term.is_toreal() and term.args()[0].is_symbol():
+            # ToReal(integer_symbol)
+            inner_symbol = term.args()[0]
+            if inner_symbol.symbol_type() == INT:
+                integer_terms.append(inner_symbol)
             else:
                 raise ValueError("ToReal wraps non-integer symbol")
-        elif t.is_symbol():
-            if t.symbol_type() == INT:
-                ints.append(t)
-            elif t.symbol_type() == REAL:
-                reals.append(t)
+        
+        elif term.is_symbol():
+            if term.symbol_type() == INT:
+                integer_terms.append(term)
+            elif term.symbol_type() == REAL:
+                real_terms.append(term)
             else:
-                raise ValueError("unexpected symbol type")
-        elif t.is_constant():
-            const_sum = t if const_sum is None else cast(ExtendedFNode, Plus(const_sum, t))
+                raise ValueError(f"Unexpected symbol type: {term.symbol_type()}")
+        
+        elif term.is_constant():
+            if constant_sum is None:
+                constant_sum = term
+            else:
+                constant_sum = Plus(constant_sum, term) #type: ignore
+        
         else:
-            raise ValueError("unexpected term type: %s" % t.node_type())
-
-    if const_sum is None:
-        const_sum = cast(ExtendedFNode, Int(0)) if len(ints) > 0 else cast(ExtendedFNode, Real(0))
-
-    assert const_sum is not None
-    return ints, reals, const_sum
-
-def decompose(f):
-    def unwrap_toreal(term):
-        """Unwrap ToReal(x) to just x, treating it as an integer."""
-        if term.is_function_application() and term.is_toint():
-            return term.args()[0]
-        return term
+            raise ValueError(f"Unexpected term type: {term.node_type()}")
     
-    def analyze_sum_terms(expr):
-        """Analyze a sum, unwrapping ToReal terms."""
+    # Default constant if none found
+    if constant_sum is None:
+        constant_sum = Int(0) if integer_terms else Real(0) #type: ignore
+    
+    assert constant_sum
+    return integer_terms, real_terms, constant_sum
+
+
+# ============================================================================
+# Formula Decomposition with Pattern Matching
+# ============================================================================
+
+def decompose_mixed_arithmetic(formula: ExtendedFNode) -> ExtendedFNode:
+    """
+    Decompose mixed integer/real arithmetic into simpler patterns.
+    Handles floor operations and mixed-type equations.
+    """
+    
+    def analyze_addition_terms(expr: ExtendedFNode) -> Optional[Tuple]:
+        """Analyze sum expression, unwrapping ToReal where appropriate."""
         if not expr.is_plus():
             return None
         
-        terms = flatten_plus(expr)
-        unwrapped_terms = [unwrap_toreal(term) for term in terms]
+        terms = flatten_addition(expr)
+        # Unwrap ToReal from ToInt expressions (floor operations)
+        unwrapped_terms = [
+            term.args()[0] if term.is_toint() else term 
+            for term in terms
+        ]
         
         try:
-            ints, reals, consts = split_by_type(unwrapped_terms)
-            return ints, reals, consts
+            return categorize_terms_by_type(unwrapped_terms)
         except ValueError:
             return None
-
-    def rewrite_atom(atom: ExtendedFNode) -> ExtendedFNode:
+    
+    def rewrite_arithmetic_atom(atom: ExtendedFNode) -> ExtendedFNode:
+        """Rewrite atoms using pattern matching for common mixed-type expressions."""
         if not (atom.is_equals() or atom.is_lt() or atom.is_le()):
-            raise ValueError("unsupported atom shape")
-
+            raise ValueError(f"Unsupported atom type: {atom.node_type()}")
+        
         lhs, rhs = atom.args()
         
-        # Pattern: (int + real) = k
-        def match_int_real_eq_const(a, b) -> Optional[ExtendedFNode]:
-            if not b.is_constant():
+        # Pattern: integer + real = constant
+        def match_int_real_equals_constant(left, right):
+            if not right.is_constant():
                 return None
             
-            terms_analysis = analyze_sum_terms(a)
-            if not terms_analysis:
+            analysis = analyze_addition_terms(left)
+            if not analysis:
                 return None
             
-            ints, reals, _ = terms_analysis
+            ints, reals, _ = analysis
             if len(ints) != 1 or len(reals) != 1:
                 return None
-                
-            xi, xr = ints[0], reals[0]
-            k = b.constant_value()
             
-            if k == 0:
-                return cast(ExtendedFNode, And(Equals(xi, Int(0)), Equals(xr, Real(0))))
-            elif k == 1:
-                return cast(ExtendedFNode, And(Equals(xi, Int(1)), Equals(xr, Real(0))))
+            int_var, real_var = ints[0], reals[0]
+            constant_value = right.constant_value()
+            
+            # Handle specific constant values
+            if constant_value == 0:
+                return And(Equals(int_var, Int(0)), Equals(real_var, Real(0)))
+            elif constant_value == 1:
+                return And(Equals(int_var, Int(1)), Equals(real_var, Real(0)))
+            
             return None
-
-        # Pattern: (int + real) < 0  
-        def match_int_real_lt_zero(a, b) -> Optional[ExtendedFNode]:
-            if not (b.is_constant() and b.constant_value() == 0):
+        
+        # Pattern: integer + real < 0
+        def match_int_real_less_than_zero(left, right) -> Optional[ExtendedFNode]:
+            if not (right.is_constant() and right.constant_value() == 0):
                 return None
             
-            terms_analysis = analyze_sum_terms(a)
-            if not terms_analysis:
+            analysis = analyze_addition_terms(left)
+            if not analysis:
                 return None
-                
-            ints, reals, _ = terms_analysis
+            
+            ints, reals, _ = analysis
             if len(ints) != 1 or len(reals) != 1:
                 return None
-            return cast(ExtendedFNode, LT(ints[0], Int(0)))
-
-        # Pattern: (xi + xr) + (yi + yr) = zi + zr
-        # Where yr could implicitly be zero
-        def match_double_sum_eq(a, b):
-            a_analysis = analyze_sum_terms(a)
-            b_analysis = analyze_sum_terms(b)
-
-            if not a_analysis or not b_analysis:
+            
+            return LT(ints[0], Int(0)) #type: ignore
+        
+        # Pattern: sum equations with carry logic
+        def match_sum_with_carry(left, right) -> Optional[ExtendedFNode]:
+            left_analysis = analyze_addition_terms(left)
+            right_analysis = analyze_addition_terms(right)
+            
+            if not (left_analysis and right_analysis):
                 return None
-
-            a_ints, a_reals, _ = a_analysis
-            b_ints, b_reals, _ = b_analysis
-
-            # We can only handle cases with 2 integer vars on LHS and 1 on RHS.
-            if len(a_ints) != 2 or len(b_ints) != 1 or len(b_reals) != 1:
+            
+            left_ints, left_reals, _ = left_analysis
+            right_ints, right_reals, _ = right_analysis
+            
+            # Must have specific structure for carry logic
+            if len(left_ints) != 2 or len(right_ints) != 1 or len(right_reals) != 1:
                 return None
-
-            xi, yi = a_ints
-            zi = b_ints[0]
-            zr = b_reals[0]
-
-            # Case 1: xi + xr + yi + yr = zi + zr
-            # The sum of two fractional parts can exceed 1, so we need carry logic.
-            if len(a_reals) == 2:
-                xr, yr = a_reals
-                R = Plus(xr, yr)
-                case1 = Implies(LT(R, Real(1)),
-                               And(Equals(Plus(xi, yi), zi), Equals(R, zr)))
-                case2 = Implies(GE(R, Real(1)),
-                               And(Equals(Plus(Plus(xi, yi), Int(1)), zi),
-                                   Equals(Minus(R, Real(1)), zr)))
-                return And(case1, case2)
-
-            # Case 2: xi + xr + yi = zi + zr (yr is implicitly zero)
-            # The single fractional part xr cannot exceed 1, so no carry is possible.
-            elif len(a_reals) == 1:
-                xr = a_reals[0]
-                # The rewrite simplifies to a direct split of the integer and real parts.
-                return And(Equals(Plus(xi, yi), zi),
-                           Equals(xr, zr))
-
-            # If the number of reals on the LHS is not 1 or 2, we can't match.
+            
+            xi, yi = left_ints
+            zi, zr = right_ints[0], right_reals[0]
+            
+            if len(left_reals) == 2:
+                # Two fractional parts: carry possible
+                xr, yr = left_reals
+                fractional_sum = Plus(xr, yr)
+                
+                no_carry = Implies(
+                    LT(fractional_sum, Real(1)),
+                    And(Equals(Plus(xi, yi), zi), Equals(fractional_sum, zr))
+                )
+                
+                with_carry = Implies(
+                    GE(fractional_sum, Real(1)),
+                    And(
+                        Equals(Plus(Plus(xi, yi), Int(1)), zi),
+                        Equals(Minus(fractional_sum, Real(1)), zr)
+                    )
+                )
+                
+                return And(no_carry, with_carry) #type: ignore
+            
+            elif len(left_reals) == 1:
+                # One fractional part: no carry possible
+                xr = left_reals[0]
+                return And(Equals(Plus(xi, yi), zi), Equals(xr, zr)) #type: ignore
+            
             return None
-
-    # Handles two patterns:
-        # 1. xi + xr = floor(yint + yreal)  ->  xr = 0 AND xi = yint
-        # 2. xint = floor(yint + yreal)    ->  xint = yint
-        def match_floor_eq(a, b):
-            # The caller will try both (a, b) and (b, a), so we only
-            # need to match one direction, e.g., where 'b' is the floor term.
-            if not b.is_toint():
+        
+        # Pattern: floor operations
+        def match_floor_operation(left, right):
+            # Try to match floor on the right side
+            if not right.is_toint():
                 return None
             
-            # Analyze the floor argument, which must be `yint + yreal`
-            floor_arg = b.args()[0]
-            b_analysis = analyze_sum_terms(floor_arg)
-            if not b_analysis:
+            floor_arg = right.args()[0]
+            floor_analysis = analyze_addition_terms(floor_arg)
+            
+            if not floor_analysis:
                 return None
             
-            b_ints, b_reals, _ = b_analysis
-            if len(b_ints) != 1 or len(b_reals) != 1:
+            floor_ints, floor_reals, _ = floor_analysis
+            if len(floor_ints) != 1 or len(floor_reals) != 1:
                 return None
-            yint = b_ints[0]
-
-            # Now, check the structure of 'a' to determine the pattern.
             
-            # Pattern 1: a is a sum `xi + xr`
-            a_analysis = analyze_sum_terms(a)
-            if a_analysis:
-                a_ints, a_reals, _ = a_analysis
-                if len(a_ints) == 1 and len(a_reals) == 1:
-                    xi, xr = a_ints[0], a_reals[0]
-                    # Rewrite: xi + xr = floor(yint + yreal)
-                    return And(Equals(xr, Real(0)), Equals(xi, yint))
+            floor_int_part = floor_ints[0]
             
-            # Pattern 2: a is a simple integer variable `xint`
-            if not a.is_plus() and a.get_type() == INT:
-                xint = a
-                # Rewrite: xint = floor(yint + yreal)
-                return Equals(xint, yint)
-
+            # Check left side structure
+            left_analysis = analyze_addition_terms(left)
+            
+            if left_analysis:
+                left_ints, left_reals, _ = left_analysis
+                if len(left_ints) == 1 and len(left_reals) == 1:
+                    # Pattern: xi + xr = floor(yi + yr)
+                    xi, xr = left_ints[0], left_reals[0]
+                    return And(Equals(xr, Real(0)), Equals(xi, floor_int_part))
+            
+            # Pattern: xi = floor(yi + yr)
+            if left.get_type() == INT and not left.is_plus():
+                return Equals(left, floor_int_part)
+            
             return None
-
-        # Try all patterns
+        
+        # Apply pattern matching
         if atom.is_equals():
-            for matcher in [match_int_real_eq_const, match_double_sum_eq, match_floor_eq]:
-                result = matcher(lhs, rhs) or matcher(rhs, lhs)
+            for pattern_matcher in [match_int_real_equals_constant, match_sum_with_carry, match_floor_operation]:
+                result = pattern_matcher(lhs, rhs) or pattern_matcher(rhs, lhs)
                 if result:
                     return result
         
         if atom.is_lt():
-            result = match_int_real_lt_zero(lhs, rhs) or match_int_real_lt_zero(rhs, lhs)
+            result = match_int_real_less_than_zero(lhs, rhs)
             if result:
                 return result
+        
+        # Fallback: ensure single type
+        free_vars = atom.get_free_variables()
+        if len({var.get_type() for var in free_vars}) > 1:
+            raise ValueError(f"Atom contains mixed types and no pattern matched: {atom.serialize()}")
+        
+        return atom
+    
+    return map_atoms(formula, rewrite_arithmetic_atom)
 
-        if len({v.get_type() for v in atom.get_free_variables()}) > 1:
-            raise ValueError(f"Atom {atom.serialize()} did not match any supported pattern")
+
+# ============================================================================
+# Main Processing Pipeline
+# ============================================================================
+
+def compute_type_separation(formula: ExtendedFNode, 
+                           free_variables: Set[ExtendedFNode]) -> Tuple[ExtendedFNode, Mapping]:
+    """
+    Main pipeline to separate mixed integer/real arithmetic.
+    Returns (separated_formula, free_variable_mapping).
+    """
+    # Step 1: Clean floor expressions
+    cleaned = clean_floor_expressions(formula)
+    
+    # Step 2: Transform to input format (basic primitives only)
+    normalized = transform_to_input_format(cleaned)
+    
+    # Step 3: Split real variables into integer + fractional parts
+    with_splits, fractional_vars, var_mapping = separate_integer_real_types(normalized, free_variables)
+    
+    # Step 4: Decompose mixed arithmetic patterns
+    decomposed = decompose_mixed_arithmetic(with_splits)
+    
+    # Step 5: Add fractional part constraints (0 <= frac < 1)
+    fractional_constraints = [
+        And(LE(Real(0), frac_var), LT(frac_var, Real(1))) 
+        for frac_var in fractional_vars
+    ]
+    
+    final_formula: ExtendedFNode = And(decomposed, *fractional_constraints) if fractional_constraints else decomposed #type: ignore
+    
+    return final_formula, var_mapping
+
+
+# ============================================================================
+# Ramsey Elimination for Mixed Types
+# ============================================================================
+
+def eliminate_mixed_ramsey(quantified_formula: ExtendedFNode) -> ExtendedFNode:
+    """Eliminate Ramsey quantifiers from mixed integer/real formulas."""
+    
+    # Extract the main formula from quantifier structure
+    inner_formula = quantified_formula.arg(0).arg(0)
+    
+    # Collect atoms by type
+    equalities, _, inequalities = collect_atoms(inner_formula)
+    all_atoms = equalities + inequalities
+    
+    real_atoms = [atom for atom in all_atoms if atom.arg(0).get_type() == REAL]
+    int_atoms = [atom for atom in all_atoms if atom.arg(0).get_type() == INT]
+    
+    # Create propositional variables for atoms
+    int_props = bool_vector("p", len(int_atoms))
+    real_props = bool_vector("q", len(real_atoms))
+    
+    # Create substitution maps
+    int_substitution = {atom: prop for atom, prop in zip(int_atoms, int_props)}
+    real_substitution = {atom: prop for atom, prop in zip(real_atoms, real_props)}
+    
+    # Build propositional skeleton
+    prop_skeleton = inner_formula.substitute(int_substitution | real_substitution)
+    
+    # Create implication constraints
+    int_implications = And([Implies(prop, atom) for prop, atom in zip(int_props, int_atoms)])
+    real_implications = And([Implies(prop, atom) for prop, atom in zip(real_props, real_atoms)])
+    
+    # Extract quantifier information
+    quantifier_vars: Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]] = quantified_formula.quantifier_vars() #type: ignore
+    if quantifier_vars[0][0].get_type() == typ.REAL:
+        real_vars, int_vars = quantifier_vars
+    else:
+        int_vars, real_vars = quantifier_vars
+    
+    # Apply Ramsey elimination to each type
+    int_ramsey = Ramsey(int_vars[0], int_vars[1], int_implications)
+    real_ramsey = Ramsey(real_vars[0], real_vars[1], real_implications)
+    
+    eliminated_int = full_ramsey_elimination_int(int_ramsey)
+    eliminated_real = full_ramsey_elimination_real(real_ramsey)
+    
+    # Create decision variable
+    decision_var = Symbol("ramsey_decision")
+    
+    # Build substituted implications
+    int_var_map = {new_var: old_var for old_var, new_var in zip(*eliminated_int.quantifier_vars())}
+    real_var_map = {new_var: old_var for old_var, new_var in zip(*eliminated_real.quantifier_vars())}
+    
+    substituted_int_implications = substitute(int_implications, int_var_map)
+    substituted_real_implications = substitute(real_implications, real_var_map)
+    
+    # Build final formula parts
+    real_part = Or(
+        eliminated_real,
+        And(Not(decision_var), Exists(eliminated_real.quantifier_vars()[0], substituted_real_implications))
+    )
+    
+    int_part = Or(
+        eliminated_int,
+        And(decision_var, Exists(eliminated_int.quantifier_vars()[0], substituted_int_implications))
+    )
+    
+    # Combine all variables for final existential quantification
+    all_existential_vars = int_props + real_props + [decision_var]
+    
+    return Exists(all_existential_vars, And(prop_skeleton, real_part, int_part)) #type: ignore
+
+
+def restore_original_variables(formula: ExtendedFNode, 
+                              variable_mapping: Mapping[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]) -> ExtendedFNode:
+    """Restore original variables from their integer/fractional decomposition."""
+    
+    substitution_map = {}
+    
+    for original_var, (int_part, frac_part) in variable_mapping.items():
+        if original_var.symbol_type() == INT:
+            # Integer variables: just use integer part
+            substitution_map[int_part] = original_var
         else:
-            return atom
+            # Real variables: int_part -> floor(original), frac_part -> original - floor(original)
+            substitution_map[int_part] = ToInt(original_var)
+            substitution_map[frac_part] = Minus(original_var, ToReal(ToInt(original_var)))
     
-    return map_atoms(f, rewrite_atom)
-
-def compute_seperation(f, free_vars: Set[ExtendedFNode]) -> Tuple[ExtendedFNode, Mapping[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]]:
-    f_new = f
-
-    # Only f_new should appear here
-    f_new = clean_floors(f_new)
-    f_new = make_input_format(f_new)
-    f_new, new_reals, free_mapping = split_int_real(f_new, free_vars)
-    f_new = decompose(f_new)
-
-    return And(f_new, *[And(LE(Real(0), r), LT(r, Real(1))) for r in new_reals]), free_mapping #type: ignore
+    return formula.substitute(substitution_map)
 
 
-def eliminate_ramsey_mixed(qformula: ExtendedFNode) -> ExtendedFNode:
-
-    formula = qformula.arg(0).arg(0)
-
-    eqs, _, ineqs = collect_atoms(cast(ExtendedFNode, formula))
-
-    real_atoms = [atom for atom in eqs + ineqs if atom.arg(0).get_type() == REAL]
-    int_atoms = [atom for atom in eqs + ineqs if atom.arg(0).get_type() == INT]
-
-    ps = bool_vector("p", len(int_atoms))
-    qs = bool_vector("q", len(real_atoms))
-
-    int_map = {atom: p for atom, p in zip(int_atoms, ps)}
-    real_map = {atom: q for atom, q in zip(real_atoms, qs)}
-    prop_skeleton = formula.substitute(int_map | real_map)
-
-    alpha = And([Implies(ps[i], int_atoms[i]) for i in range(len(ps))])
-    beta = And([Implies(qs[i], real_atoms[i]) for i in range(len(qs))])
-
-
-    real_ram, int_ram = (formula, formula.arg(0)) if formula.quantifier_vars()[0][0].get_type() == typ.REAL else (formula.arg(0), formula)
-    int_ram = full_ramsey_elimination_int(Ramsey(int_ram.quantifier_vars()[0], int_ram.quantifier_vars()[1], alpha))
-    real_ram = full_ramsey_elimination_real(Ramsey(real_ram.quantifier_vars()[0], real_ram.quantifier_vars()[1], beta))
-
-    r = Symbol("r")
-
-    alpha_r = substitute(alpha, {y: x for (x, y) in zip(*int_ram.quantifier_vars())})
-    beta_r = substitute(beta, {y: x for (x, y) in zip(*real_ram.quantifier_vars())})
-
-    p1 = Or(real_ram, And(Not(r), Exists(real_ram.quantifier_vars()[0], beta_r)))
-    p2 = Or(int_ram, And(r, Exists(int_ram.quantifier_vars()[0], alpha_r)))
-
-    return Exists((ps + qs + r), And(prop_skeleton, p1, p2)) #type: ignore
-
-def redo_frees(f: ExtendedFNode, mapping: Mapping[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]) -> ExtendedFNode:
-    
-    substitution_map = {
-        int_part: key if key.symbol_type() == INT else ToInt(key)
-        for key, (int_part, _) in mapping.items()
-    } | {
-        real_part: Minus(key, ToReal(ToInt(key)))
-        for key, (_, real_part) in mapping.items()
-    }
-
-    return f.substitute(substitution_map)
-
-def full_ramsey_elimination_mixed(qformula: ExtendedFNode):
-
-    def _rewrite_le(atom: ExtendedFNode):
+def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> ExtendedFNode:
+    """
+    Complete pipeline for eliminating Ramsey quantifiers from mixed integer/real formulas.
+    """
+    def convert_le_to_lt_or_eq(atom: ExtendedFNode) -> ExtendedFNode:
+        """Convert <= to < OR = for easier processing."""
         if atom.is_le():
-            return Or(LT(atom.arg(0), atom.arg(1)), Equals(atom.arg(0), atom.arg(1)))
-        else:
-            return atom
-
-    free_vars = qformula.get_free_variables()
-
-    no_le = map_atoms(qformula, _rewrite_le)
-    inp = make_real_input_format(no_le) # aka push negations inside
-
-    sep = redo_frees(*compute_seperation(inp, free_vars))
-
-    no_ex = eliminate_mixed_existential_quantifier(sep)
-    return eliminate_ramsey_mixed(no_ex)
+            left, right = atom.arg(0), atom.arg(1)
+            return Or(LT(left, right), Equals(left, right)) #type: ignore
+        return atom
     
-
-if __name__ == "__main__":
-
-    def _validate_separation(f):
-        def validate_atom(atom):
-            assert len({v.get_type() for v in atom.get_free_variables()}) <= 1
-            return atom
+    # Extract free variables
+    free_vars = quantified_formula.get_free_variables()
     
-        map_atoms(f, validate_atom)
-        return True
-
-
-    x = Symbol("x", REAL)
-    y = Symbol("y", REAL)
-
-    # 2. Define the input formula
-    # f = 2*x + (-0.5)*y <= 3
-    two_x = Times(Real(2), x)
-    half_y = Times(Real(-0.5), y)
-    lhs = Plus(two_x, half_y)
-    rhs = Real(3)
+    # Step 1: Eliminate <= operators
+    no_le = map_atoms(quantified_formula, convert_le_to_lt_or_eq)
     
-    original_formula = LT(lhs, rhs)
+    # Step 2: Normalize to real input format (push negations inward)
+    normalized = make_real_input_format(no_le)
     
-    # 3. Run the complete decomposition process
-    # This is the main function from your script
-    decomposed_formula = compute_seperation(original_formula)
-    print(decomposed_formula.serialize())
-    _validate_separation(decomposed_formula)
+    # Step 3: Separate integer and real types
+    separated, var_mapping = compute_type_separation(normalized, free_vars)
+    
+    # Step 4: Restore original variables
+    with_original_vars = restore_original_variables(separated, var_mapping)
+    
+    # Step 5: Eliminate existential quantifiers
+    no_existentials = eliminate_mixed_existential_quantifier(with_original_vars)
+    
+    # Step 6: Apply mixed Ramsey elimination
+    return eliminate_mixed_ramsey(no_existentials)
