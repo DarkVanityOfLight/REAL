@@ -16,7 +16,7 @@ from ramsey_elimination.formula_utils import (bool_vector, generic_recursor,
                                             map_arithmetic_atom, map_atoms, 
                                             ast_to_terms, collect_atoms)
 
-from math import lcm
+from math import lcm, gcd
 from fractions import Fraction
 
 
@@ -97,20 +97,20 @@ def sum_selected_terms(bit_pattern: str, terms: List[ExtendedFNode],
     return current_sum, constraints
 
 
-def build_integer_constant(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
+def build_integer_constant(n: int, symbol_type: PySMTType) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
     """
     Build constraints to represent integer n using only primitives:
     x = 0, x = 1, x + y = z
     """
     if n == 0:
-        zero_constraint, zero_symbol = create_zero(INT)
+        zero_constraint, zero_symbol = create_zero(symbol_type)
         return zero_symbol, [zero_constraint]
     
     constraints = []
     
     # Create basic symbols
-    zero_constraint, zero_symbol = create_zero(INT)
-    one_constraint, one_symbol = create_one(INT)
+    zero_constraint, zero_symbol = create_zero(symbol_type)
+    one_constraint, one_symbol = create_one(symbol_type)
     constraints.extend([zero_constraint, one_constraint])
     
     abs_n = abs(n)
@@ -122,18 +122,18 @@ def build_integer_constant(n: int) -> Tuple[ExtendedFNode, List[ExtendedFNode]]:
         binary_bits = bin(abs_n)[2:][::-1]
         
         # Build powers of 2: [1, 2, 4, 8, ...]
-        powers, power_constraints = build_powers_by_doubling(one_symbol, len(binary_bits), INT)
+        powers, power_constraints = build_powers_by_doubling(one_symbol, len(binary_bits), symbol_type)
         constraints.extend(power_constraints)
         
         # Sum selected powers based on binary representation
-        positive_result, sum_constraints = sum_selected_terms(binary_bits, powers, zero_symbol, INT)
+        positive_result, sum_constraints = sum_selected_terms(binary_bits, powers, zero_symbol, symbol_type)
         constraints.extend(sum_constraints)
     
     if n > 0:
         return positive_result, constraints
     
     # Handle negative: create y such that y + positive_result = 0
-    negative_symbol : ExtendedFNode = FreshSymbol(INT, "negative_%s") #type: ignore
+    negative_symbol : ExtendedFNode = FreshSymbol(symbol_type, f"negative_{symbol_type}_%s") #type: ignore
     negative_constraint = create_addition_constraint(negative_symbol, positive_result, zero_symbol)
     constraints.append(negative_constraint)
     
@@ -146,6 +146,8 @@ def build_constant_multiplication(coefficient: int, variable: ExtendedFNode,
     Build constraints for coefficient * variable using doubling and addition.
     Returns (result_symbol, construction_constraints).
     """
+    variable = variable if variable.is_symbol() else variable.arg(0)
+    assert variable.is_symbol()
     constraints = []
     
     zero_constraint, zero_symbol = create_zero(symbol_type)
@@ -229,15 +231,24 @@ def normalize_arithmetic_atom(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[
     # Normalize to: sum(coeffs * vars) ~ constant
     coeffs, _, constant = arithmetic_solver(left_coeffs, left_const, right_coeffs, right_const, set())
     
-    # Scale to integer coefficients
-    denominators = [Fraction(coeff).limit_denominator().denominator for coeff in coeffs.values()]
-    scale_factor = lcm(*denominators) if denominators else 1
-    
-    scaled_terms = [
-        (var, int(Fraction(coeff).limit_denominator() * scale_factor))
-        for var, coeff in coeffs.items()
-    ]
-    scaled_constant = int(Fraction(constant).limit_denominator() * scale_factor)
+    def F(x): 
+        return Fraction(x).limit_denominator() if isinstance(x, float) else Fraction(x)
+
+    fracs = {v: F(c) for v, c in coeffs.items()}
+    c = F(constant)
+
+    # scale to integers
+    denoms = [f.denominator for f in fracs.values()] + [c.denominator]
+    scale = lcm(*denoms) if denoms else 1
+    scaled_terms = [(v, (f * scale).numerator) for v, f in fracs.items()]
+    scaled_const = (c * scale).numerator
+
+    # reduce by gcd
+    nonzero = [abs(n) for _, n in scaled_terms] + ([abs(scaled_const)] if scaled_const != 0 else [])
+    g = gcd(*nonzero) if nonzero else 1
+    if g > 1:
+        scaled_terms = [(v, n // g) for v, n in scaled_terms]
+        scaled_const //= g
     
     constraints = []
     
@@ -273,11 +284,8 @@ def normalize_arithmetic_atom(atom: ExtendedFNode) -> Tuple[ExtendedFNode, List[
     
     # Build right-hand side constant
     rhs_symbol: ExtendedFNode
-    rhs_symbol, rhs_constraints = build_integer_constant(scaled_constant)
+    rhs_symbol, rhs_constraints = build_integer_constant(scaled_const, result_type)
     constraints.extend(rhs_constraints)
-    
-    if result_type == REAL:
-        rhs_symbol = ToReal(rhs_symbol) #type: ignore
     
     # Create difference: lhs - rhs
     neg_rhs, neg_constraints = build_constant_multiplication(-1, rhs_symbol, result_type)
