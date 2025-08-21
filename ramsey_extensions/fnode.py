@@ -29,7 +29,7 @@ class ExtendedFNode(FNode):
         """Return True if this node is any quantifier (exists, forall, or Ramsey)."""
         return self.is_exists() or self.is_forall() or self.is_ramsey()
 
-    def quantifier_vars(self) -> Tuple[Self] | Tuple[Tuple[Self, ...], Tuple[Self, ...]]:
+    def quantifier_vars(self) -> Tuple[Self, ...] | Tuple[Tuple[Self, ...], Tuple[Self, ...]]:
         """
         Return a tuple of bound variables for this quantifier.
 
