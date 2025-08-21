@@ -607,7 +607,7 @@ def compute_type_separation(formula: ExtendedFNode,
 # Ramsey Elimination for Mixed Types
 # ============================================================================
 
-def eliminate_mixed_ramsey(quantified_formula: ExtendedFNode) -> ExtendedFNode:
+def eliminate_ramsey_mixed(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     """Eliminate Ramsey quantifiers from mixed integer/real formulas."""
     
     # Extract the main formula from quantifier structure
@@ -774,4 +774,4 @@ def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> Extended
     no_existentials = eliminate_mixed_existential_quantifier(requantified)
     
     # Step 6: Apply mixed Ramsey elimination
-    return eliminate_mixed_ramsey(no_existentials)
+    return eliminate_ramsey_mixed(no_existentials)
