@@ -694,6 +694,54 @@ def restore_original_variables(formula: ExtendedFNode,
     return formula.substitute(substitution_map)
 
 
+def requantify(quantified_formula: ExtendedFNode, free_variables: List[ExtendedFNode]):
+    to_requantify : Set[ExtendedFNode] = set(quantified_formula.get_free_variables()).difference(free_variables)
+
+    ints = []
+    reals = []
+
+    for var in to_requantify:
+        if var.symbol_type() == INT:
+            ints.append(var)
+        elif var.symbol_type() == REAL:
+            reals.append(var) 
+        else:
+            raise Exception(f"Unhandled variable type for symbol {var}")
+
+    ram1: ExtendedFNode = quantified_formula.arg(0)
+    ram2: ExtendedFNode = ram1.arg(0)
+    exist1: ExtendedFNode = ram2.arg(0)
+    exist2: ExtendedFNode = exist1.arg(0)
+
+    # Assert we have two ramsey quantifiers
+    assert ram1.is_ramsey()
+    assert ram2.is_ramsey()
+
+    int_exists: ExtendedFNode
+    real_exists: ExtendedFNode
+    if not exist1.is_exists():
+        int_exists = Exists(ints, ram2.arg(0)) #type: ignore
+        real_exists = Exists(reals, int_exists) #type: ignore
+
+    elif not exist2.is_exists():
+        if cast(ExtendedFNode, exist1.quantifier_vars()[0]).symbol_type() == INT:
+            int_exists = Exists(list(exist1.quantifier_vars()) + ints, exist1.arg(0)) #type: ignore
+            real_exists = Exists(reals, int_exists) #type: ignore
+        else:
+            int_exists = Exists(ints, exist1.arg(0)) #type: ignore
+            real_exists = Exists(list(exist1.quantifier_vars()) + reals, int_exists) #type: ignore
+    else:
+        if cast(Tuple[ExtendedFNode, ...], exist1.quantifier_vars())[0].symbol_type() == INT:
+            int_exists = Exists(list(exist1.quantifier_vars()) + ints, exist2.arg(0)) #type: ignore
+            real_exists = Exists(list(exist2.quantifier_vars()) + reals, int_exists) #type: ignore
+        else:
+            int_exists = Exists(list(exist2.quantifier_vars()) + ints, exist1.arg(0)) #type: ignore
+            real_exists = Exists(list(exist1.quantifier_vars()) + reals, int_exists) #type: ignore
+
+    inner: ExtendedFNode = Ramsey(*cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], ram2.quantifier_vars()), real_exists)
+    return Ramsey(*cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], ram1.quantifier_vars()), inner)
+
+
 def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     """
     Complete pipeline for eliminating Ramsey quantifiers from mixed integer/real formulas.
@@ -719,9 +767,11 @@ def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> Extended
     
     # Step 4: Restore original variables
     with_original_vars = restore_original_variables(separated, var_mapping)
+
+    requantified = requantify(with_original_vars, free_vars)
     
     # Step 5: Eliminate existential quantifiers
-    no_existentials = eliminate_mixed_existential_quantifier(with_original_vars)
+    no_existentials = eliminate_mixed_existential_quantifier(requantified)
     
     # Step 6: Apply mixed Ramsey elimination
     return eliminate_mixed_ramsey(no_existentials)
