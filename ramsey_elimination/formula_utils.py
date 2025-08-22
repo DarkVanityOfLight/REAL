@@ -4,12 +4,22 @@ from pysmt.fnode import FNode
 import pysmt.typing as typ
 import pysmt.operators as operators
 from pysmt.operators import EQUALS, NOT,SYMBOL, TOREAL
-from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env
+from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env, FreshSymbol
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.formula import ExtendedFormulaManager
 from ramsey_extensions.operators import MOD_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod
+
+def _fresh_vector(template: str, length: int, T: typ.PySMTType) -> List[ExtendedFNode]:
+    return [FreshSymbol(T, (template.format(i, "{}"))) for i in range(length)] #type: ignore
+
+def fresh_real_vector(template: str, length: int):
+    return _fresh_vector(template, length, typ.REAL)
+def fresh_bool_vector(template: str, length: int):
+    return _fresh_vector(template, length, typ.BOOL)
+def fresh_int_vector(template: str, length: int):
+    return _fresh_vector(template, length, typ.INT)
 
 def _vector(name: str, length: int, T: typ.PySMTType) -> List[ExtendedFNode]:
     return [Symbol(f"{name}_{i}", T) for i in range(length)] #type: ignore

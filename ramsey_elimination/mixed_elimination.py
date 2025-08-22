@@ -1,6 +1,5 @@
 from itertools import chain
 from typing import List, Mapping, Optional, Set, Tuple, cast
-from pysmt.formula import IdentityDagWalker
 from pysmt.shortcuts import (GE, LE, LT, And, Equals, Exists, FreshSymbol, 
                             Implies, Int, Minus, Not, Or, Plus, Real, Symbol, 
                             Times, ToReal, substitute)
@@ -14,7 +13,7 @@ from ramsey_elimination.real_elimination import full_ramsey_elimination_real
 from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import Ramsey, ToInt
-from ramsey_elimination.formula_utils import (bool_vector, generic_recursor, 
+from ramsey_elimination.formula_utils import (fresh_bool_vector, generic_recursor, 
                                             map_arithmetic_atom, map_atoms, 
                                             ast_to_terms, collect_atoms)
 
@@ -631,8 +630,8 @@ def eliminate_ramsey_mixed(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     int_atoms = [atom for atom in all_atoms if atom.arg(0).get_type() == INT]
     
     # Create propositional variables for atoms
-    int_props = bool_vector("p", len(int_atoms))
-    real_props = bool_vector("q", len(real_atoms))
+    int_props = fresh_bool_vector("p_{}_%s", len(int_atoms))
+    real_props = fresh_bool_vector("q_{}_%s", len(real_atoms))
     
     # Create substitution maps
     int_substitution = {atom: prop for atom, prop in zip(int_atoms, int_props)}
@@ -648,9 +647,11 @@ def eliminate_ramsey_mixed(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     # Extract quantifier information
     quantifier_vars: Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]] = quantified_formula.quantifier_vars() #type: ignore
     if quantifier_vars[0][0].get_type() == typ.REAL:
-        real_vars, int_vars = quantifier_vars
+        real_vars = quantifier_vars
+        int_vars = quantified_formula.arg(0).quantifier_vars()
     else:
-        int_vars, real_vars = quantifier_vars
+        int_vars = quantifier_vars
+        real_vars = quantified_formula.arg(0).quantifier_vars()
     
     # Apply Ramsey elimination to each type
     int_ramsey = Ramsey(int_vars[0], int_vars[1], int_implications)

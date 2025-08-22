@@ -2,14 +2,14 @@ from typing import Dict, Tuple, cast
 
 from pysmt.operators import EQUALS, NOT
 from pysmt.shortcuts import LE, LT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, GE, Times
-from pysmt.typing import INT, BOOL
+from pysmt.typing import INT
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod, Ramsey
 
 from ramsey_elimination.simplifications import arithmetic_solver, make_int_input_format, apply_subst
-from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms, int_vector, reconstruct_from_coeff_map, ensure_mod
+from ramsey_elimination.formula_utils import ast_to_terms,collect_atoms, fresh_bool_vector, fresh_int_vector, reconstruct_from_coeff_map, ensure_mod
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 
 
@@ -30,7 +30,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Boolean abstraction
     # ============================
-    qs = bool_vector("q", l+n+m)
+    qs = fresh_bool_vector("q_{}_%s", l+n+m)
 
     prop_skeleton = formula.substitute({
         atom: qs[i]
@@ -40,7 +40,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Profile constraints
     # ============================
-    p, omega = int_vector("p", 2*m), bool_vector("o", 2*m)
+    p, omega = fresh_int_vector("p_{}_%s", 2*m), fresh_bool_vector("o_{}_%s", 2*m)
 
     admissible = And([
         Or(
@@ -56,8 +56,8 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     vars1, vars2 = cast(Tuple[Tuple[ExtendedFNode], Tuple[ExtendedFNode]], qformula.quantifier_vars())
     o = len(vars1)
 
-    x0 = int_vector("x0", o)
-    x = int_vector("x", o)
+    x0 = fresh_int_vector("x0_{}_%s", o)
+    x = fresh_int_vector("x_{}_%s", o)
     x_restriction = Or([NotEquals(x[i], Int(0)) for i in range(o)])
 
     sub1_x0= {vars1[i]: x0[i] for i in range(o)}

@@ -1,11 +1,10 @@
-
 from typing import Dict, List, Sequence, Tuple, cast
 
 from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
-from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms,real_vector, reconstruct_from_coeff_map
+from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, fresh_bool_vector, fresh_real_vector, reconstruct_from_coeff_map
 from ramsey_elimination.simplifications import apply_subst, arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
@@ -34,7 +33,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Boolean abstraction
     # ============================
-    qs = bool_vector("q", n+m)
+    qs = fresh_bool_vector("q_{}_%s", n+m)
 
     prop_skeleton = formula.substitute({
         atom: qs[i]
@@ -44,17 +43,17 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     # Profile constraints
     # ============================
-    rho = real_vector("rho", n)
-    sigma = real_vector("sigma", n)
-    t_rho = real_vector("t_rho", n)
-    t_sigma = real_vector("t_sigma", n)
+    rho = fresh_real_vector("rho_{}_%s", n)
+    sigma = fresh_real_vector("sigma_{}_%s", n)
+    t_rho = fresh_real_vector("t_rho_{}_%s", n)
+    t_sigma = fresh_real_vector("t_sigma_{}_%s", n)
 
     vars1, vars2 = cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], qformula.quantifier_vars())
     l = len(vars1)
 
-    x = real_vector("x", l)
-    x_c = real_vector("x_c", l)
-    x_inf = real_vector("x_inf", l) 
+    x = fresh_real_vector("x_{}_%s", l)
+    x_c = fresh_real_vector("x_c_{}_%s", l)
+    x_inf = fresh_real_vector("x_inf_{}_%s", l) 
 
     # Substitution maps
     sub_x_for_var1 = make_sub(vars1, x)

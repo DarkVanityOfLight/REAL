@@ -1,5 +1,6 @@
 from pysmt.environment import Environment, push_env
 from pysmt.oracles import FreeVarsOracle, QuantifierOracle, SizeOracle, TheoryOracle
+from pysmt.substituter import Substituter
 from pysmt.walkers import DagWalker
 from pysmt.walkers.dag import Walker
 
