@@ -1,4 +1,6 @@
+from itertools import chain
 from typing import List, Mapping, Optional, Set, Tuple, cast
+from pysmt.formula import IdentityDagWalker
 from pysmt.shortcuts import (GE, LE, LT, And, Equals, Exists, FreshSymbol, 
                             Implies, Int, Minus, Not, Or, Plus, Real, Symbol, 
                             Times, ToReal, substitute)
@@ -702,81 +704,83 @@ def restore_original_variables(formula: ExtendedFNode,
     return formula.substitute(substitution_map)
 
 
-def requantify(quantified_formula: ExtendedFNode, free_variables: List[ExtendedFNode]):
-    to_requantify : Set[ExtendedFNode] = set(quantified_formula.get_free_variables()).difference(free_variables)
+def requantify(formula: ExtendedFNode,
+               ram1: Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]],
+               ram2: Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]],
+               ex_vars_int: List[ExtendedFNode],
+               ex_vars_real: List[ExtendedFNode],
+               free_vars: List[ExtendedFNode]):
+    """Re-quantify all free variables in `formula` that are not in `free_vars`,
+    the explicit existentials, or the two Ramsey tuples."""
 
-    ints = []
-    reals = []
+    excluded: Set[ExtendedFNode] = set(free_vars) \
+        | set(ex_vars_int) \
+        | set(ex_vars_real) \
+        | set(chain(ram1[0], ram1[1], ram2[0], ram2[1]))
 
-    for var in to_requantify:
-        if var.symbol_type() == INT:
-            ints.append(var)
-        elif var.symbol_type() == REAL:
-            reals.append(var) 
-        else:
-            raise Exception(f"Unhandled variable type for symbol {var}")
+    to_requantify = [v for v in formula.get_free_variables() if v not in excluded]
 
-    ram1: ExtendedFNode = quantified_formula.arg(0)
-    ram2: ExtendedFNode = ram1.arg(0)
-    exist1: ExtendedFNode = ram2.arg(0)
-    exist2: ExtendedFNode = exist1.arg(0)
+    ints: List[ExtendedFNode] = [v for v in to_requantify if v.symbol_type() == INT]
+    reals: List[ExtendedFNode] = [v for v in to_requantify if v.symbol_type() == REAL]
+    others = [v for v in to_requantify if v.symbol_type() not in {INT, REAL}]
+    if others:
+        raise Exception(f"Unhandled variable types for symbols: {others!r}")
 
-    # Assert we have two ramsey quantifiers
-    assert ram1.is_ramsey()
-    assert ram2.is_ramsey()
-
-    int_exists: ExtendedFNode
-    real_exists: ExtendedFNode
-    if not exist1.is_exists():
-        int_exists = Exists(ints, ram2.arg(0)) #type: ignore
-        real_exists = Exists(reals, int_exists) #type: ignore
-
-    elif not exist2.is_exists():
-        if cast(ExtendedFNode, exist1.quantifier_vars()[0]).symbol_type() == INT:
-            int_exists = Exists(list(exist1.quantifier_vars()) + ints, exist1.arg(0)) #type: ignore
-            real_exists = Exists(reals, int_exists) #type: ignore
-        else:
-            int_exists = Exists(ints, exist1.arg(0)) #type: ignore
-            real_exists = Exists(list(exist1.quantifier_vars()) + reals, int_exists) #type: ignore
-    else:
-        if cast(Tuple[ExtendedFNode, ...], exist1.quantifier_vars())[0].symbol_type() == INT:
-            int_exists = Exists(list(exist1.quantifier_vars()) + ints, exist2.arg(0)) #type: ignore
-            real_exists = Exists(list(exist2.quantifier_vars()) + reals, int_exists) #type: ignore
-        else:
-            int_exists = Exists(list(exist2.quantifier_vars()) + ints, exist1.arg(0)) #type: ignore
-            real_exists = Exists(list(exist1.quantifier_vars()) + reals, int_exists) #type: ignore
-
-    inner: ExtendedFNode = Ramsey(*cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], ram2.quantifier_vars()), real_exists)
-    return Ramsey(*cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], ram1.quantifier_vars()), inner)
+    inner = Exists(ints + ex_vars_int, Exists(reals + ex_vars_real, formula))
+    return Ramsey(*ram1, Ramsey(*ram2, inner))
 
 
 def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     """
     Complete pipeline for eliminating Ramsey quantifiers from mixed integer/real formulas.
     """
+    # Extract free variables and parse nested quantifier structure
+    free_vars = quantified_formula.get_free_variables()
+    ramsey1_vars = cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], 
+                       quantified_formula.quantifier_vars())
+    ramsey2_vars = cast(Tuple[Tuple[ExtendedFNode, ...], Tuple[ExtendedFNode, ...]], 
+                       quantified_formula.arg(0).quantifier_vars())
+    
+    # Navigate through nested existential quantifiers to get core formula
+    inner = quantified_formula.arg(0).arg(0)
+    if inner.is_exists():
+        ex1_vars = inner.quantifier_vars()
+        if inner.arg(0).is_exists():
+            formula = inner.arg(0).arg(0)
+            ex2_vars = inner.arg(0).quantifier_vars()
+        else:
+            formula = inner.arg(0)
+            ex2_vars = []
+    else:
+        formula = inner
+        ex1_vars = []
+        ex2_vars = []
+    
+    # Separate integer and real existential variables by type
+    if ex1_vars and ex1_vars[0].symbol_type() == INT:
+        ex_vars_int, ex_vars_real = ex1_vars, ex2_vars
+    else:
+        ex_vars_int, ex_vars_real = ex2_vars, ex1_vars
+    
+    # Step 1: Convert <= to (< OR =) for easier processing
     def convert_le_to_lt_or_eq(atom: ExtendedFNode) -> ExtendedFNode:
-        """Convert <= to < OR = for easier processing."""
         if atom.is_le():
             left, right = atom.arg(0), atom.arg(1)
             return Or(LT(left, right), Equals(left, right)) #type: ignore
         return atom
     
-    # Extract free variables
-    free_vars = quantified_formula.get_free_variables()
+    no_le_formula = map_atoms(formula, convert_le_to_lt_or_eq)
     
-    # Step 1: Eliminate <= operators
-    no_le = map_atoms(quantified_formula, convert_le_to_lt_or_eq)
-    
-    # Step 2: Normalize to real input format (push negations inward)
-    normalized = make_real_input_format(no_le)
+    # Step 2: Normalize (push negations inward)
+    normalized = make_real_input_format(no_le_formula)
     
     # Step 3: Separate integer and real types
     separated, var_mapping = compute_type_separation(normalized, free_vars)
     
-    # Step 4: Restore original variables
+    # Step 4: Restore original variables and re-quantify
     with_original_vars = restore_original_variables(separated, var_mapping)
-
-    requantified = requantify(with_original_vars, free_vars)
+    requantified = requantify(with_original_vars, ramsey1_vars, ramsey2_vars, 
+                             ex_vars_int, ex_vars_real, free_vars)
     
     # Step 5: Eliminate existential quantifiers
     no_existentials = eliminate_mixed_existential_quantifier(requantified)
