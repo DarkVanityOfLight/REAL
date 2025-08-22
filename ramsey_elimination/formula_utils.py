@@ -55,21 +55,27 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[Tuple[ExtendedFNode, ...], Tu
     stack = [formula]
     while stack:
         sub = stack.pop()
-        match sub.node_type():
-            case t if t == EQUALS:
-                if sub.arg(0).node_type() == MOD_NODE_TYPE:
-                    modeqs.add(sub)
-                else:
-                    eqs.add(sub)
-            case t if t == operators.LT or t == operators.LE:
-                ineqs.add(sub)
-            case t if t == NOT:
-                # A mod equality can appear negated, since we can not rewrite it
-                # we then treat the whole thing(negation + equation) as the actuall atom
+
+        if sub.is_equals():
+            # equality: check for mod on left-hand side
+            if sub.arg(0).is_mod():
                 modeqs.add(sub)
-            case _:
-                # non-atom / other connective: dive into its children
-                stack.extend(sub.args())
+            else:
+                if sub.is_not():
+                    print(f"Adding {sub}")
+                eqs.add(sub)
+
+        elif sub.is_lt() or sub.is_le():
+            ineqs.add(sub)
+
+        elif sub.is_not():
+            # negated mod-equality treated as a modeq atom
+            if sub.arg(0).is_mod():
+                modeqs.add(sub)
+
+        else:
+            # non-atom / other connective: dive into its children
+            stack.extend(sub.args())
 
     return tuple(eqs), tuple(modeqs), tuple(ineqs)
 
