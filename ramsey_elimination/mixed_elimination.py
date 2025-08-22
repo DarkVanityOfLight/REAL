@@ -664,8 +664,8 @@ def eliminate_ramsey_mixed(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     decision_var = Symbol("ramsey_decision")
     
     # Build substituted implications
-    int_var_map = {new_var: old_var for old_var, new_var in zip(*eliminated_int.quantifier_vars())}
-    real_var_map = {new_var: old_var for old_var, new_var in zip(*eliminated_real.quantifier_vars())}
+    int_var_map = {y: x for x, y in zip(int_vars[0], int_vars[1])}
+    real_var_map = {y: x for x, y in zip(real_vars[0], real_vars[1])}
     
     substituted_int_implications = substitute(int_implications, int_var_map)
     substituted_real_implications = substitute(real_implications, real_var_map)
@@ -673,12 +673,12 @@ def eliminate_ramsey_mixed(quantified_formula: ExtendedFNode) -> ExtendedFNode:
     # Build final formula parts
     real_part = Or(
         eliminated_real,
-        And(Not(decision_var), Exists(eliminated_real.quantifier_vars()[0], substituted_real_implications))
+        And(Not(decision_var), Exists(real_vars[0], substituted_real_implications))
     )
     
     int_part = Or(
         eliminated_int,
-        And(decision_var, Exists(eliminated_int.quantifier_vars()[0], substituted_int_implications))
+        And(decision_var, Exists(int_vars[0], substituted_int_implications))
     )
     
     # Combine all variables for final existential quantification
