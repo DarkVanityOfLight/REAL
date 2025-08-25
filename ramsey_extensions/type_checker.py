@@ -1,6 +1,7 @@
+from typing import Set
 from pysmt.exceptions import PysmtTypeError
 from pysmt.operators import INT_CONSTANT
-from pysmt.typing import BOOL, INT, REAL
+from pysmt.typing import BOOL, INT, REAL, PySMTType
 import pysmt.operators
 
 from pysmt.type_checker import SimpleTypeChecker
@@ -35,21 +36,24 @@ class ExtendedTypeChecker(SimpleTypeChecker):
         if len(var_lists) != 2:
             raise PysmtTypeError(f"RAMSEY expects 2 var-lists, got {len(var_lists)}")
 
-        # Ensure all vars share the same numeric type
-        seen_type = None
-        for i, var_list in enumerate(var_lists):
-            for j, var in enumerate(var_list):
-                t = self.get_type(var)
-                if seen_type is None:
-                    seen_type = t
-                elif t is not seen_type:
-                    raise PysmtTypeError(
-                        f"RAMSEY var mismatch at var_lists[{i}][{j}]: got {t}, expected {seen_type}"
-                    )
+        left_vars, right_vars = var_lists
+        if len(left_vars) != len(right_vars):
+            raise PysmtTypeError(
+                f"RAMSEY expects var-lists of equal length, got {len(left_vars)} and {len(right_vars)}"
+            )
 
-        # Numeric types must be Int or Real
-        if seen_type not in (INT, REAL):
-            raise PysmtTypeError(f"RAMSEY vars must be Int or Real, got {seen_type}")
+        # Ensure pairwise type matching and numeric type restriction
+        for i, (lv, rv) in enumerate(zip(left_vars, right_vars)):
+            lt, rt = lv.symbol_type(), rv.symbol_type()
+
+            if lt != rt:
+                raise PysmtTypeError(
+                    f"RAMSEY var types must match pairwise: index {i} has {lt} vs {rt}"
+                )
+            if lt not in (INT, REAL):
+                raise PysmtTypeError(
+                    f"RAMSEY vars must be Int or Real, got {lt} at index {i}"
+                )
 
         return BOOL
 
