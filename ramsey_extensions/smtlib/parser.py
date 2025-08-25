@@ -58,14 +58,26 @@ class ExtendedSmtLibParser(SmtLibParser):
 
 
     def _enter_ramsey(self, stack, tokens, key):
-        # 1) Parse the sort (either T or (T))
+        is_mixed = False
+        ty = None
+
         tok = tokens.consume()
         if tok == '(':
-            ty = self.parse_type(tokens, "expression")
+            # we already consumed '(' so read the next token
+            next_tok = tokens.consume()
+            if next_tok.lower() == "mixed":
+                is_mixed = True
+                # next_tok already consumed; nothing to push back
+            else:
+                tokens.add_extra_token(next_tok)       # put it back for parse_type
+                ty = self.parse_type(tokens, "expression")
             self.consume_closing(tokens, "expression")
         else:
-            tokens.add_extra_token(tok)
-            ty = self.parse_type(tokens, "expression")
+            if tok.lower() == "mixed":
+                is_mixed = True
+            else:
+                tokens.add_extra_token(tok)
+                ty = self.parse_type(tokens, "expression")
 
         # 2) First var-list: (x1 x2 …)
         self.consume_opening(tokens, "expression")
@@ -74,9 +86,18 @@ class ExtendedSmtLibParser(SmtLibParser):
             name = tokens.consume()
             if name == ')':
                 break
-            var = self._get_quantified_var(name, ty)
-            self.cache.bind(name, var)
-            vrs1.append((name, var))
+
+            if is_mixed:
+                tokens.add_extra_token(name)            # put token back for parse_atom
+                vname = self.parse_atom(tokens, "expression")
+                typename = self.parse_type(tokens, "expression")
+                var = self._get_quantified_var(vname, typename)
+                self.cache.bind(vname, var)
+                vrs1.append((vname, var))
+            else:
+                var = self._get_quantified_var(name, ty)
+                self.cache.bind(name, var)
+                vrs1.append((name, var))
 
         # 3) Second var-list: (y1 y2 …)
         self.consume_opening(tokens, "expression")
@@ -85,9 +106,18 @@ class ExtendedSmtLibParser(SmtLibParser):
             name = tokens.consume()
             if name == ')':
                 break
-            var = self._get_quantified_var(name, ty)
-            self.cache.bind(name, var)
-            vrs2.append((name, var))
+
+            if is_mixed:
+                tokens.add_extra_token(name)            # put token back for parse_atom
+                vname = self.parse_atom(tokens, "expression")
+                typename = self.parse_type(tokens, "expression")
+                var = self._get_quantified_var(vname, typename)
+                self.cache.bind(vname, var)
+                vrs2.append((vname, var))
+            else:
+                var = self._get_quantified_var(name, ty)
+                self.cache.bind(name, var)
+                vrs2.append((name, var))
 
         # 4) Parse the embedded formula under these bindings
         body = self.get_expression(tokens)
