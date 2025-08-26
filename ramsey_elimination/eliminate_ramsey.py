@@ -1,7 +1,7 @@
 from enum import Enum, auto
-from ramsey_elimination.integer_elimination import eliminate_ramsey_int, full_ramsey_elimination_int
-from ramsey_elimination.mixed_elimination import eliminate_ramsey_mixed, full_mixed_ramsey_elimination
-from ramsey_elimination.real_elimination import eliminate_ramsey_real, full_ramsey_elimination_real
+from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
+from ramsey_elimination.mixed_elimination import eliminate_mixed_ramsey_from_separated, full_mixed_ramsey_elimination
+from ramsey_elimination.real_elimination import full_ramsey_elimination_real
 from ramsey_extensions.fnode import ExtendedFNode
 
 
@@ -10,7 +10,7 @@ class _RamseyTypes(Enum):
     REAL = auto()
     MIXED = auto()
 
-def eliminate_ramsey(f: ExtendedFNode) -> ExtendedFNode:
+def eliminate_ramsey(f: ExtendedFNode, is_mixed_separated=False) -> ExtendedFNode:
     assert f.is_ramsey()
 
     q1, _ = f.quantifier_vars()
@@ -24,4 +24,7 @@ def eliminate_ramsey(f: ExtendedFNode) -> ExtendedFNode:
         case _RamseyTypes.REAL:
             return full_ramsey_elimination_real(f)
         case _RamseyTypes.MIXED:
-            return full_mixed_ramsey_elimination(f)
+            if is_mixed_separated:
+                return eliminate_mixed_ramsey_from_separated(f)
+            else:
+                return full_mixed_ramsey_elimination(f)
