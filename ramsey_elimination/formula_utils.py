@@ -10,6 +10,7 @@ from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.formula import ExtendedFormulaManager
 from ramsey_extensions.operators import MOD_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod
+import ramsey_extensions.operators as cops
 
 def _fresh_vector(template: str, length: int, T: typ.PySMTType) -> List[ExtendedFNode]:
     return [FreshSymbol(T, (template.format(i, "{}"))) for i in range(length)] #type: ignore
@@ -185,10 +186,10 @@ def ast_to_terms(node: ExtendedFNode
                     const *= c
                 return terms, const
 
-            case operators.TOREAL:
+            case operators.TOREAL | cops.TOINT_NODE_TYPE:
                 return process(n.arg(0))
             case _:
-                raise ValueError(f"Unknown node type: {T}")
+                raise ValueError(f"Unknown node type: {node}")
 
     terms, const = process(node)
     # drop zero coefficients
