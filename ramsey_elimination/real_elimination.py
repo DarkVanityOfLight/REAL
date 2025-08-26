@@ -1,4 +1,4 @@
-from typing import Dict, List, Sequence, Tuple, cast
+from typing import Dict, List, Optional, Sequence, Tuple, cast
 
 from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
@@ -8,6 +8,8 @@ from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, fresh_
 from ramsey_elimination.simplifications import apply_subst, arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
+
+FNode = ExtendedFNode # type: ignore[misc]
 
 def not_eq_num(left, right):
     return Or(LT(left, right), GT(left, right))
@@ -65,8 +67,11 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     sub_x_c_for_var1 = make_sub(vars1, x_c)
     sub_x_c_for_var2 = make_sub(vars2, x_c)
 
-    lambdas, xis, deltas, mus = [None] * n, [None] * n, [None] * n, [None] * n
-    z_and_h_terms: List[ExtendedFNode] = [None] * n #type: ignore
+    lambdas: List[Optional[ExtendedFNode]] = [None] * n
+    xis: List[Optional[ExtendedFNode]] = [None] * n
+    deltas: List[Optional[ExtendedFNode]] = [None] * n
+    mus: List[Optional[ExtendedFNode]] = [None] * n
+    z_and_h_terms: List[Optional[ExtendedFNode]] = [None] * n
     theta_constraints = []
 
     for i, ineq in enumerate(ineqs):
@@ -78,7 +83,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
         # This term captures everything not related to vars1 or vars2
         wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
-        z_and_h_terms[i] = reconstruct_from_coeff_map(wz_coeffs, const, Real)
+        z_and_h_terms[i] = reconstruct_from_coeff_map(wz_coeffs, const, Real) #type: ignore
         
         # rx = sy + tz + h
         rx_coeff = apply_subst(l_coeffs, sub_x_for_var1)
@@ -89,15 +94,15 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         sx_inf_coeff = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub_x_inf_for_var2)
         sx_c_coeff = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub_x_c_for_var2)
 
-        rx = reconstruct_from_coeff_map(rx_coeff, 0, Real)
-        rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0, Real)
-        sx = reconstruct_from_coeff_map(sx_coeff, 0, Real)
-        sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0, Real)
-        rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0, Real)
-        sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0, Real)
+        rx = reconstruct_from_coeff_map(rx_coeff, 0, Real) #type: ignore
+        rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0, Real) #type: ignore
+        sx = reconstruct_from_coeff_map(sx_coeff, 0, Real) #type: ignore
+        sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0, Real) #type: ignore
+        rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0, Real) #type: ignore
+        sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0, Real) #type: ignore
 
         # Lambda constraints
-        lambdas[i] = And(
+        lambdas[i] = cast(ExtendedFNode, And(
             Implies(
                 Or(Equals(t_rho[i], Real(-1)), Equals(t_rho[i], Real(1))),
                 And(Equals(rx, rho[i]), Equals(rx_inf, Real(0))),
@@ -106,10 +111,10 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
                 Or(Equals(t_sigma[i], Real(-1)), Equals(t_sigma[i], Real(1))),
                 And(Equals(sx, sigma[i]), Equals(sx_inf, Real(0))),
             )
-        )
+        ))
 
         # Xi constraints
-        xis[i] = And(
+        xis[i] = cast(ExtendedFNode, And(
             Implies(
                 Equals(t_rho[i], Real(0)),
                 And(Equals(rx, rho[i]), Equals(rx_c, Real(0)), Equals(rx_inf, Real(0)))
@@ -118,27 +123,27 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
                 Equals(t_sigma[i], Real(0)),
                 And(Equals(sx, sigma[i]), Equals(sx_c, Real(0)), Equals(sx_inf, Real(0)))
             )
-        )
+        ))
 
         # Delta constraints
-        deltas[i] = And(
+        deltas[i] = cast(ExtendedFNode, And(
             Implies(Equals(t_rho[i], Real(-1)), LT(rx_c, Real(0))),
             Implies(Equals(t_rho[i], Real(1)), GT(rx_c, Real(0))),
             Implies(Equals(t_sigma[i], Real(-1)), LT(sx_c, Real(0))),
             Implies(Equals(t_sigma[i], Real(1)), GT(sx_c, Real(0))),
-        )
+        ))
 
         # Mu constraints
-        mus[i] = And(
+        mus[i] = cast(ExtendedFNode, And(
             Implies(Equals(t_rho[i], Real(-2)), LT(rx_inf, Real(0))),
             Implies(Equals(t_rho[i], Real(2)), GT(rx_inf, Real(0))),
             Implies(Equals(t_sigma[i], Real(-2)), LT(sx_inf, Real(0))),
             Implies(Equals(t_sigma[i], Real(2)), GT(sx_inf, Real(0))),
-        )
+        ))
         
         # Theta constraints
         theta_constraints.append(Or([Equals(t_rho[i], Real(v)) for v in [-2, -1, 0, 1, 2]]))
-        theta_constraints.append(Or([Equals(t_sigma[i], Real(v)) for v in [-1, 0, 1, 2]]))
+        theta_constraints.append(Or([Equals(t_sigma[i], Real(v)) for v in [-2, -1, 0, 1, 2]]))
         theta_constraints.append(Implies(Equals(t_rho[i], Real(2)), Equals(t_sigma[i], Real(2))))
 
         antecedent1 = Or(
@@ -169,7 +174,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
             raise ValueError(f"Unexpected inequality type in loop: {ineq_type}")
 
     theta = And(theta_constraints)
-    epsilons = [None] * m
+    epsilons: List[Optional[ExtendedFNode]] = [None] * m
 
     for i, eq in enumerate(eqs):
         left, right = eq.arg(0), eq.arg(1)
@@ -189,24 +194,24 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
 
         u_minus_v_x_coeffs = {
-            sub_x_for_var1.get(var, var): l_coeffs.get(var, 0) - v_coeffs.get(vars2[i], 0)
-            for i, var in enumerate(vars1)
+            sub_x_for_var1.get(var1, var1): l_coeffs.get(var1, 0) - v_coeffs.get(var2, 0)
+            for var1, var2 in zip(vars1, vars2)
         }
 
-        ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0, Real)
-        ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0, Real)
-        vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0, Real)
-        vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0, Real)
-        u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0, Real)
-        wz_d = reconstruct_from_coeff_map(wz_coeffs, const, Real)
+        ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0, Real) #type: ignore
+        ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0, Real) #type: ignore
+        vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0, Real) #type: ignore
+        vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0, Real) #type: ignore
+        u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0, Real) #type: ignore
+        wz_d = reconstruct_from_coeff_map(wz_coeffs, const, Real) #type: ignore
 
-        epsilons[i] = And(
+        epsilons[i] = cast(ExtendedFNode, And(
             Equals(ux_c, Real(0)),
             Equals(ux_inf, Real(0)),
             Equals(vx_c, Real(0)),
             Equals(vx_inf, Real(0)),
             Equals(u_minus_v_x, wz_d),
-        )
+        ))
 
     # ============================
     # Final Assembly of gamma
@@ -233,7 +238,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
     quantified_vars = qs + rho + sigma + t_rho + t_sigma + x + x_c + x_inf
 
-    return Exists(quantified_vars, gamma_body)
+    return Exists(quantified_vars, gamma_body) #type: ignore
 
 
 def full_ramsey_elimination_real(formula: ExtendedFNode):
