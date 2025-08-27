@@ -24,8 +24,8 @@ def is_mondec(f: ExtendedFNode, is_mixed_separated=False):
         for i, var in enumerate(free_vars)
     ]
 
-    f_u = f.substitute({var: u for (var, u)  in zip(free_vars, u)})
-    f_v = f.substitute({var: v for (var, v)  in zip(free_vars, v)})
+    f_u = f.substitute({var: val for (var, val) in zip(free_vars, u)})
+    f_v = f.substitute({var: val for (var, val) in zip(free_vars, v)})
 
     for i in range(len(free_vars)-1):
         w = FreshSymbol(free_vars[i].symbol_type(), "w_%s")
