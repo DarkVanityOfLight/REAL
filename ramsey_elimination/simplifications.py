@@ -2,7 +2,7 @@ from typing import Mapping, Tuple, Dict, Set, Union
 
 from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
-from pysmt.shortcuts import FALSE, GT, LE,TRUE, And, ForAll, Or, LT, Exists, Not, Int, Plus, Real
+from pysmt.shortcuts import FALSE, GT, LE,TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus, Real
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import MOD_NODE_TYPE
@@ -83,17 +83,15 @@ def _make_input_format_logic(node: ExtendedFNode, is_int: bool) -> ExtendedFNode
 
     Args:
         node: The formula node to process.
-        is_int: If True, applies integer-specific transformations (e.g.,
-                rewriting <= to <). Otherwise, applies real-specific rules.
 
     Returns:
         The transformed formula node.
     """
-    typ = node.node_type()
-
     # A direct recursive call is cleaner and captures the `is_int` context.
     def recurse(n):
         return _make_input_format_logic(n, is_int)
+
+    typ = node.node_type()
 
     match typ:
         # 1. Top-level atom transformations (logic differs for int/real)
@@ -146,8 +144,8 @@ def _make_input_format_logic(node: ExtendedFNode, is_int: bool) -> ExtendedFNode
                         # For integers: y <= x  =>  y < x + 1
                         return LT(rhs, Plus(lhs, Int(1)))
                     else:
-                        # For reals: y <= x is kept
-                        return LE(rhs, lhs)
+                        # !(x < y) => x >= y => x > y \/ x = y
+                        return Or(LT(rhs, lhs), Equals(lhs, rhs))
                 case operators.EQUALS:
                     lhs, rhs = sub.args()
                     if contains_mod(lhs) or contains_mod(rhs):
