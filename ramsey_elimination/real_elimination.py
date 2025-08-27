@@ -14,10 +14,6 @@ FNode = ExtendedFNode # type: ignore[misc]
 def not_eq_num(left, right):
     return Or(LT(left, right), GT(left, right))
 
-def make_sub(vars_list: Sequence[ExtendedFNode], symbols_list: Sequence[ExtendedFNode]) -> Dict[ExtendedFNode, ExtendedFNode]:
-    """Return a dict mapping each vars_list[i] to symbols_list[i]."""
-    return { vars_list[i]: symbols_list[i] for i in range(len(vars_list)) }
-
 def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     """
     Eliminate the (ramsey x y phi) quantifier from a formula.
@@ -58,21 +54,21 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     x_inf = fresh_real_vector("x_inf_{}_%s", l) 
 
     # Substitution maps
-    sub_x_for_var1 = make_sub(vars1, x)
-    sub_x_for_var2 = make_sub(vars2, x)
+    sub_x_for_var1 = dict(zip(vars1, x))
+    sub_x_for_var2 = dict(zip(vars2, x))
 
-    sub_x_inf_for_var1 = make_sub(vars1, x_inf)
-    sub_x_inf_for_var2 = make_sub(vars2, x_inf)
+    sub_x_inf_for_var1 = dict(zip(vars1, x_inf))
+    sub_x_inf_for_var2 = dict(zip(vars2, x_inf))
 
-    sub_x_c_for_var1 = make_sub(vars1, x_c)
-    sub_x_c_for_var2 = make_sub(vars2, x_c)
+    sub_x_c_for_var1 = dict(zip(vars1, x_c))
+    sub_x_c_for_var2 = dict(zip(vars2, x_c))
 
     lambdas: List[Optional[ExtendedFNode]] = [None] * n
     xis: List[Optional[ExtendedFNode]] = [None] * n
     deltas: List[Optional[ExtendedFNode]] = [None] * n
     mus: List[Optional[ExtendedFNode]] = [None] * n
-    z_and_h_terms: List[Optional[ExtendedFNode]] = [None] * n
     theta_constraints = []
+    ineq_implications: List[Optional[ExtendedFNode]] = [None] * n
 
     for i, ineq in enumerate(ineqs):
         left, right = ineq.arg(0), ineq.arg(1)
@@ -83,7 +79,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
         # This term captures everything not related to vars1 or vars2
         wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
-        z_and_h_terms[i] = reconstruct_from_coeff_map(wz_coeffs, const, Real) #type: ignore
+        z_and_h_term = reconstruct_from_coeff_map(wz_coeffs, const, Real) #type: ignore
         
         # rx = sy + tz + h
         rx_coeff = apply_subst(l_coeffs, sub_x_for_var1)
@@ -143,7 +139,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         
         # Theta constraints
         theta_constraints.append(Or([Equals(t_rho[i], Real(v)) for v in [-2, -1, 0, 1, 2]]))
-        theta_constraints.append(Or([Equals(t_sigma[i], Real(v)) for v in [-2, -1, 0, 1, 2]]))
+        theta_constraints.append(Or([Equals(t_sigma[i], Real(v)) for v in [-1, 0, 1, 2]]))
         theta_constraints.append(Implies(Equals(t_rho[i], Real(2)), Equals(t_sigma[i], Real(2))))
 
         antecedent1 = Or(
@@ -157,14 +153,14 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
         ineq_type = ineq.node_type()
         if ineq_type == operators.LT:
-            consequent1 = LT(rho[i], Plus(sigma[i], z_and_h_terms[i]))
-            consequent2 = LE(rho[i], Plus(sigma[i], z_and_h_terms[i]))
+            consequent1 = LT(rho[i], Plus(sigma[i], z_and_h_term))
+            consequent2 = LE(rho[i], Plus(sigma[i], z_and_h_term))
             
             theta_constraints.append(Implies(antecedent1, consequent1))
             theta_constraints.append(Implies(antecedent2, consequent2))
 
         elif ineq_type == operators.LE:
-            consequent_le = LE(rho[i], Plus(sigma[i], z_and_h_terms[i]))
+            consequent_le = LE(rho[i], Plus(sigma[i], z_and_h_term))
 
             theta_constraints.append(Implies(antecedent1, consequent_le))
             theta_constraints.append(Implies(antecedent2, consequent_le))
@@ -172,6 +168,9 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         else:
             # This case should not be reached if collect_atoms is correct
             raise ValueError(f"Unexpected inequality type in loop: {ineq_type}")
+
+
+        ineq_implications[i] = cast(ExtendedFNode, Implies(qs[i], And(lambdas[i], xis[i], deltas[i], mus[i])))
 
     theta = And(theta_constraints)
     epsilons: List[Optional[ExtendedFNode]] = [None] * m
@@ -218,11 +217,6 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     # ============================
     non_trivial_xc = Or([Not(Equals(xc_i, Real(0))) for xc_i in x_c])
 
-    ineq_implications = And([
-        Implies(qs[i], And(lambdas[i], xis[i], deltas[i], mus[i]))
-        for i in range(n)
-    ])
-
     eq_implications = And([
         Implies(qs[n + i], epsilons[i])
         for i in range(m)
@@ -232,7 +226,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
         prop_skeleton,
         theta,
         non_trivial_xc,
-        ineq_implications,
+        And(ineq_implications),
         eq_implications
     )
 
