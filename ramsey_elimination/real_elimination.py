@@ -161,10 +161,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
         elif ineq_type == operators.LE:
             consequent_le = LE(rho[i], Plus(sigma[i], z_and_h_term))
-
-            theta_constraints.append(Implies(antecedent1, consequent_le))
-            theta_constraints.append(Implies(antecedent2, consequent_le))
-            
+            theta_constraints.append(Implies(Or(antecedent1, antecedent2), consequent_le))
         else:
             # This case should not be reached if collect_atoms is correct
             raise ValueError(f"Unexpected inequality type in loop: {ineq_type}")
