@@ -13,6 +13,8 @@ from ramsey_elimination.formula_utils import ast_to_terms,collect_atoms, fresh_b
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 
 
+FNode = ExtendedFNode # type: ignore[misc]
+
 def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     """
     Eliminate the (ramsey x y phi) quantifier from a formula.
@@ -86,10 +88,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         rx0 = apply_subst(r_coeffs, sub2_x0) # s x0 + tz + h
         rx  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
 
-        left_x   = reconstruct_from_coeff_map(lx,  0, Int)
-        left_x0  = reconstruct_from_coeff_map(lx0, 0, Int)
-        right_x0 = reconstruct_from_coeff_map(rx0, const, Int)
-        right_x  = reconstruct_from_coeff_map(rx,  0, Int)
+        left_x   = reconstruct_from_coeff_map(lx,  0, Int) #type: ignore
+        left_x0  = reconstruct_from_coeff_map(lx0, 0, Int) #type: ignore
+        right_x0 = reconstruct_from_coeff_map(rx0, const, Int) #type: ignore
+        right_x  = reconstruct_from_coeff_map(rx,  0, Int) #type: ignore
 
 
         g1 = Or(omega[2*i], And(LE(left_x0, p[2*i]), LE(left_x, Int(0))))
@@ -144,10 +146,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         rx0_map = apply_subst(r_coeffs, sub2_x0) # v x0 + wz
         rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # vx
 
-        lx = reconstruct_from_coeff_map(lx_map, 0, Int)
-        lx0 = reconstruct_from_coeff_map(lx0_map, 0, Int)
-        rx0 = reconstruct_from_coeff_map(rx0_map, const, Int) # v x0 + wz + d
-        rx = reconstruct_from_coeff_map(rx_map, 0, Int) # vx
+        lx = reconstruct_from_coeff_map(lx_map, 0, Int) #type: ignore
+        lx0 = reconstruct_from_coeff_map(lx0_map, 0, Int) #type: ignore
+        rx0 = reconstruct_from_coeff_map(rx0_map, const, Int) # v x0 + wz + d  #type: ignore
+        rx = reconstruct_from_coeff_map(rx_map, 0, Int) # vx  #type: ignore
 
         def negate_if(t): return Not(t) if is_negated else t
 
@@ -173,10 +175,10 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         rx_map  = apply_subst({v:c for v,c in r_coeffs.items() if v in vars2}, sub2_x) # sx
         rx0_map = apply_subst(r_coeffs,  sub2_x0) # s x0 + tz
 
-        left_x = reconstruct_from_coeff_map(lx_map, 0, Int)
-        right_x = reconstruct_from_coeff_map(rx_map, 0, Int)
-        left_x0 = reconstruct_from_coeff_map(lx0_map, 0, Int)
-        right_x0 = reconstruct_from_coeff_map(rx0_map, const, Int) # s x0 + tz + h
+        left_x = reconstruct_from_coeff_map(lx_map, 0, Int) #type: ignore
+        right_x = reconstruct_from_coeff_map(rx_map, 0, Int) #type: ignore
+        left_x0 = reconstruct_from_coeff_map(lx0_map, 0, Int) #type: ignore
+        right_x0 = reconstruct_from_coeff_map(rx0_map, const, Int) # s x0 + tz + h #type: ignore
 
         gamma.append(And(
             Equals(left_x, Int(0)), # rx = 0
@@ -191,7 +193,7 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
 
     result = And(x_restriction, prop_skeleton, admissible, guarded_gamma)
 
-    return Exists(omega + qs, Exists(p + x + x0, result))
+    return Exists(qs, Exists(p + omega + x + x0, result))  #type: ignore
     
 
 def full_ramsey_elimination_int(formula: ExtendedFNode):
