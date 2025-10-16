@@ -87,11 +87,10 @@ def benchmark_sum_eq_C(dim: int, C: int):
 def benchmark_dot_product_zero(dim: int, v_coeffs: list):
     x = int_vector("a", dim)
     y = int_vector("b", dim)
-    t = Symbol("t", INT)
     dot_x = Plus(x[i] * v_coeffs[i] for i in range(dim))
     dot_y = Plus(y[i] * v_coeffs[i] for i in range(dim))
-    f = And(Equals(dot_x - dot_y - t, Int(0)), Equals(t, Int(0)))
-    return Ramsey(x, y, Exists([t], f))
+    f = Equals(dot_x - dot_y, Int(0))
+    return Ramsey(x, y, f)
 
 def benchmark_sum_zero_hyperplane(dim: int):
     x = int_vector("a", dim)
@@ -166,35 +165,19 @@ def benchmark_matrix_kernel(dim: int, A: list):
     f = And(And(*eqs), And([Equals(t, Int(0)) for t in t_vec]))
     return Ramsey(x, y, Exists(t_vec, f))
 
-def benchmark_stabilizer(dim: int, M: list):
-    assert len(M) == dim, f"Expected {dim} rows, got {len(M)}"
-    assert all(len(row) == dim for row in M), "All rows must have length {dim}"
-    x = int_vector("a", dim)
-    y = int_vector("b", dim)
-    t_vec = [Symbol(f"t_{i}", INT) for i in range(dim)]
-    eqs = []
-    for i in range(dim):
-        Mx_i = Plus(M[i][j] * x[j] for j in range(dim))
-        My_i = Plus(M[i][j] * y[j] for j in range(dim))
-        eqs.append(Equals(Mx_i - My_i - t_vec[i], Int(0)))
-    f = And(And(*eqs), And([Equals(t, Int(0)) for t in t_vec]))
-    return Ramsey(x, y, Exists(t_vec, f))
-
 def benchmark_weighted_sum_eq(dim: int, coeffs: list):
     x = int_vector("a", dim)
     y = int_vector("b", dim)
-    t = Symbol("t", INT)
     sum_x = Plus(coeffs[i] * x[i] for i in range(dim))
     sum_y = Plus(coeffs[i] * y[i] for i in range(dim))
-    f = And(Equals(sum_x - sum_y - t, Int(0)), Equals(t, Int(0)))
-    return Ramsey(x, y, Exists([t], f))
+    f = And(Equals(sum_x - sum_y, Int(0)))
+    return Ramsey(x, y, f)
 
 def benchmark_equal_first_k(dim: int, k: int):
     x = int_vector("a", dim)
     y = int_vector("b", dim)
-    t_vec = [Symbol(f"t_{i}", INT) for i in range(k)]
-    f = And([And(Equals(x[i] - y[i] - t_vec[i], Int(0)), Equals(t_vec[i], Int(0))) for i in range(k)])
-    return Ramsey(x, y, Exists(t_vec, f))
+    f = And([Equals(x[i] - y[i], Int(0)) for i in range(k)])
+    return Ramsey(x, y, f)
 
 def benchmark_sum_parity(dim: int):
     x = int_vector("a", dim)
@@ -243,3 +226,104 @@ def benchmark_mixed_sign_pair(dim: int):
     f_y = And([And(Equals(y[i] + y[i+n] - t_vec2[i], Int(0)), Equals(t_vec2[i], Int(0))) for i in range(n)])
     f = And(f_x, f_y)
     return Ramsey(x, y, Exists(t_vec1 + t_vec2, f))
+
+
+def benchmark_sorted_chain_int(dim: int):
+    """
+    Constrains the integer vector y to be strictly sorted, with each
+    element y[i] also strictly greater than the corresponding x[i]. This
+    creates a dependency chain: x[i] < y[i] < y[i+1], which implies
+    x[i] + 1 <= y[i] and y[i] + 1 <= y[i+1].
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+
+    # Each element of y must be strictly greater than the corresponding x element
+    y_gt_x = [y[i] > x[i] for i in range(dim)]
+
+    # The elements of y must be in strictly ascending order
+    y_is_sorted = [y[i] < y[i+1] for i in range(dim - 1)]
+
+    f = And(y_gt_x + y_is_sorted)
+    return Ramsey(x, y, f)
+
+def benchmark_linear_average_int(dim: int):
+    """
+    Constrains each element of y to be greater than the average of all
+    elements in x. The constraint is expressed linearly as dim * y[i] > Sum(x)
+    to avoid non-linear integer division and focus on aggregation.
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+
+    sum_x = Plus(x)
+
+    # dim * y[i] > Sum(x) for all i
+    f = And([Int(dim) * y[i] > sum_x for i in range(dim)])
+    return Ramsey(x, y, f)
+
+def benchmark_cyclic_dependency_int(dim: int):
+    """
+    Creates a cyclic dependency among the elements of y. Each y[i] is
+    constrained by y[i-1] and x[i], with y[0] constrained by y[dim-1].
+    This is a classic challenge for propagation-based integer solvers.
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+
+    # Standard forward chain: y[i] > x[i] + y[i-1]
+    chain = [y[i] > x[i] + y[i-1] for i in range(1, dim)]
+
+    # The cyclic link: y[0] is greater than the last element
+    cycle_link = [y[0] > y[dim-1]]
+
+    f = And(chain + cycle_link)
+    return Ramsey(x, y, f)
+
+def benchmark_dynamic_gap_chain_int(dim: int):
+    """
+    Constrains y to be a sorted vector where the gap between consecutive
+    elements is determined by the vector x. Specifically, y[i+1] must be
+    greater than y[i] + x[i]. This tests variable-step propagation.
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+
+    # To make the problem meaningful, we need x to be positive.
+    x_is_positive = [x[i] > 0 for i in range(dim - 1)]
+
+    # The gap between y[i] and y[i+1] is at least x[i] + 1.
+    dynamic_gap = [y[i+1] > y[i] + x[i] for i in range(dim - 1)]
+
+    f = And(x_is_positive + dynamic_gap)
+    return Ramsey(x, y, f)
+
+def benchmark_bounding_box_int(dim: int):
+    """
+    Constrains y to be inside an integer bounding box defined by two free
+    vectors z1 and z2. The vector x is constrained to be strictly "below"
+    this box, creating parallel chains of inequalities: x < z1 < y < z2.
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+    z1 = int_vector('c', dim)
+    z2 = int_vector('d', dim)
+
+    f = And([And(x[i] < z1[i], z1[i] < y[i], y[i] < z2[i]) for i in range(dim)])
+    return Ramsey(x, y, f)
+
+
+def benchmark_linear_average_eq_int(dim: int):
+    """
+    Constrains each element of y to be equal to the average of all
+    elements in x. The constraint is expressed linearly as dim * y[i] = Sum(x)
+    to avoid non-linear integer division and focus on aggregation.
+    """
+    x = int_vector('a', dim)
+    y = int_vector('b', dim)
+
+    sum_x = Plus(x)
+
+    # dim * y[i] = Sum(x) for all i
+    f = And([Equals(Int(dim) * y[i], sum_x) for i in range(dim)])
+    return Ramsey(x, y, f)

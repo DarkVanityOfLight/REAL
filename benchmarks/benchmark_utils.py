@@ -126,48 +126,60 @@ def discover_benchmark_config(module) -> Dict[str, Any]:
     return config
 
 # --- Built-in Configurations (for backward compatibility) ---
-
+D = 100
 BUILTIN_CONFIGS = {
     'real_benchmarks': {
         'elimination_func': full_ramsey_elimination_real,
         'args': {
-            'benchmark_half_real': [(1000, 5.0)],
-            'benchmark_equal_exists_real': [(1000,)],
-            'benchmark_equal_free_real': [(1000,)],
-            'benchmark_dickson_real': [(1000,)],
+            'benchmark_half_real': [(D, 0.0)],
+            'benchmark_equal_exists_real': [(D,)],
+            'benchmark_equal_free_real': [(D,)],
+            'benchmark_dickson_real': [(D,)],
+            'benchmark_sorted_chain_real': [(D,)],
+            'benchmark_average_real': [(D,)],
+            'benchmark_average_eq_real': [(D,)],
+            'benchmark_midpoint_real': [(D,)],
+            'benchmark_bounding_box_real': [(D,)],
+            'benchmark_cyclic_dependency_real': [(D,)],
         }
     },
     'int_benchmarks': {
         'elimination_func': full_ramsey_elimination_int,
         'args': {
             # Core benchmarks
-            'benchmark_half_int': [(1000, 50)],
-            'benchmark_equal_exists_int': [(1000,)],
-            'benchmark_equal_exists_2_int': [(1000,)],
-            'benchmark_equal_free_int': [(1000,)],
-            'benchmark_equal_free_2_int': [(1000,)],
-            'benchmark_dickson_int': [(1000,)],
+            'benchmark_half_int': [(D, 50)],
+            'benchmark_equal_exists_int': [(D,)],
+            'benchmark_equal_exists_2_int': [(D,)],
+            'benchmark_equal_free_int': [(D,)],
+            'benchmark_equal_free_2_int': [(D,)],
+            'benchmark_dickson_int': [(D,)],
             
             # Extended benchmarks
-            'benchmark_congruence_mod_m': [(1000, 2)],
-            'benchmark_sum_even': [(1000,)],
-            'benchmark_diff_in_kZ': [(1000, 3)],
+            'benchmark_congruence_mod_m': [(D, 2)],
+            'benchmark_sum_even': [(D,)],
+            'benchmark_diff_in_kZ': [(D, 3)],
             'benchmark_sum_eq_C': [(2, 0)],
-            'benchmark_dot_product_zero': [(1000, [1]*1000)],
-            'benchmark_sum_zero_hyperplane': [(1000,)],
-            'benchmark_diff_set': [(1000, [(0,)*1000, (1,)+(0,)*999])],
+            'benchmark_dot_product_zero': [(D, [1]*D)],
+            'benchmark_sum_zero_hyperplane': [(D,)],
+            'benchmark_diff_set': [(D, [[0]*D, [10]*D, [-10]*D])],
             'benchmark_scheduling_overlap': [(2,)],
-            'benchmark_divisibility_by_k': [(1000, 4)],
-            'benchmark_affine_progression': [(1000, [1]*1000)],
-            'benchmark_matrix_kernel': [(1000, [[1]*1000])],
-            'benchmark_stabilizer': [(1000, [[1] * 1000] * 1000)],
-            'benchmark_weighted_sum_eq': [(1000, list(range(1,1001)))],
-            'benchmark_equal_first_k': [(1000, 3)],
-            'benchmark_sum_parity': [(1000,)],
-            'benchmark_prefix_monotone': [(1000,)],
-            'benchmark_sum_zero_or_C': [(1000, 5)],
-            'benchmark_cross_coordinate_eq': [(1000,)],
-            'benchmark_mixed_sign_pair': [(1000,)]
+            'benchmark_divisibility_by_k': [(D, 4)],
+            'benchmark_affine_progression': [(D, [1]*D)],
+            'benchmark_matrix_kernel': [(D, [[1]*D])],
+            'benchmark_stabilizer': [(D, [[1] * D] * 1)],
+            'benchmark_weighted_sum_eq': [(D, list(range(1, D+1)))],
+            'benchmark_equal_first_k': [(D, 3)],
+            'benchmark_sum_parity': [(D,)],
+            'benchmark_prefix_monotone': [(D,)],
+            'benchmark_sum_zero_or_C': [(D, 5)],
+            'benchmark_cross_coordinate_eq': [(D,)],
+            'benchmark_mixed_sign_pair': [(D,)],
+            'benchmark_sorted_chain_int': [(D,)],
+            'benchmark_linear_average_int': [(D,)],
+            'benchmark_cyclic_dependency_int': [(D,)],
+            'benchmark_dynamic_gap_chain_int': [(D,)],
+            'benchmark_bounding_box_int': [(D,)],
+            'benchmark_linear_average_eq_int': [(D,)],
         }
     }
 }
@@ -457,8 +469,8 @@ def output_table(results: List[BenchmarkResult]) -> None:
               f"{result.elim_time_ms:>10.2f} {result.solve_time_ms:>10.2f} "
               f"{result.total_time_ms:>10.2f} {result.is_sat!s:>5} {status:<10}")
 
-def run_benchmarks(module_name: str, config: BenchmarkConfig) -> List[BenchmarkResult]:
-    """Run all benchmarks for a given module."""
+def run_benchmarks(module_name: str, config: BenchmarkConfig, benchmark_name: str | None = None) -> List[BenchmarkResult]:
+    """Run benchmarks for a given module, optionally a single benchmark."""
     # Import the benchmark module
     try:
         module_path = module_name.replace('.py', '')
@@ -472,6 +484,12 @@ def run_benchmarks(module_name: str, config: BenchmarkConfig) -> List[BenchmarkR
     # Get benchmark functions
     bench_funcs = get_benchmark_functions(benchmark_module)
     
+    if benchmark_name:
+        bench_funcs = [bf for bf in bench_funcs if bf[0] == benchmark_name]
+        if not bench_funcs:
+            print(f"No benchmark named '{benchmark_name}' found in '{module_name}'", file=sys.stderr)
+            return []
+
     if not bench_funcs:
         print(f"No benchmark functions found in '{module_name}'", file=sys.stderr)
         return []
@@ -540,6 +558,11 @@ def main():
         default=50,
         help="Maximum length for argument display (default: 50)"
     )
+
+    parser.add_argument(
+        "--benchmark",
+        help="Name of a single benchmark to run (default: run all benchmarks)"
+    )
     
     args = parser.parse_args()
     
@@ -561,7 +584,10 @@ def main():
             return
         
         # Run benchmarks
-        results = run_benchmarks(args.module, config)
+        if args.benchmark:
+            results = run_benchmarks(args.module, config, benchmark_name=args.benchmark)
+        else:
+            results = run_benchmarks(args.module, config)
         
         # Output results
         if results:
