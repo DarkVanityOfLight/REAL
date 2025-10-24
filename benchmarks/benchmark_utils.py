@@ -3,8 +3,8 @@
 
 Usage:
     python benchmark.py real_benchmarks
-    python benchmark.py int_benchmarks --format json
-    python benchmark.py int_benchmarks --benchmark benchmark_half_int benchmark_equal_exists_int
+    python benchmark.py --format json int_benchmarks
+    python benchmark.py --benchmark benchmark_half_int benchmark_equal_exists_int int_benchmarks
     python benchmark.py --list-benchmarks int_benchmarks
 """
 
