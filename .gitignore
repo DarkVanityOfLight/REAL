@@ -74,8 +74,6 @@ ENV/
 env.bak/
 .python-version
 
-# Pipenv
-Pipfile.lock
 
 # Poetry
 poetry.lock
