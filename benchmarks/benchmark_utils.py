@@ -4,7 +4,7 @@
 Usage:
     python benchmark.py real_benchmarks
     python benchmark.py int_benchmarks --format json
-    python benchmark.py custom_benchmarks --timeout 30
+    python benchmark.py int_benchmarks --benchmark benchmark_half_int benchmark_equal_exists_int
     python benchmark.py --list-benchmarks int_benchmarks
 """
 
@@ -41,6 +41,7 @@ class BenchmarkConfig:
     max_arg_display_length: int = 50
     output_format: str = 'csv'  # csv, json, table
     verbose: bool = False
+    dimension: int = 100  # Default dimension
 
 @dataclass
 class BenchmarkResult:
@@ -68,7 +69,7 @@ def get_benchmark_functions(module):
         if name.startswith('benchmark_')
     ]
 
-def discover_benchmark_config(module) -> Dict[str, Any]:
+def discover_benchmark_config(module, dimension: int) -> Dict[str, Any]:
     """
     Automatically discover benchmark configuration from a module.
     
@@ -110,13 +111,13 @@ def discover_benchmark_config(module) -> Dict[str, Any]:
             if param_count == 0:
                 config['args'][name] = [()]
             elif param_count == 1:
-                config['args'][name] = [(1000,)]  # Common dimension
+                config['args'][name] = [(dimension,)]
             elif param_count == 2:
                 # Try to guess based on function name
                 if 'real' in name.lower():
-                    config['args'][name] = [(1000, 5.0)]
+                    config['args'][name] = [(dimension, 5.0)]
                 else:
-                    config['args'][name] = [(1000, 50)]
+                    config['args'][name] = [(dimension, 50)]
             else:
                 # For complex functions, require explicit configuration
                 config['args'][name] = []
@@ -126,63 +127,65 @@ def discover_benchmark_config(module) -> Dict[str, Any]:
     return config
 
 # --- Built-in Configurations (for backward compatibility) ---
-D = 100
-BUILTIN_CONFIGS = {
-    'real_benchmarks': {
-        'elimination_func': full_ramsey_elimination_real,
-        'args': {
-            'benchmark_half_real': [(D, 0.0)],
-            'benchmark_equal_exists_real': [(D,)],
-            'benchmark_equal_free_real': [(D,)],
-            'benchmark_dickson_real': [(D,)],
-            'benchmark_sorted_chain_real': [(D,)],
-            'benchmark_average_real': [(D,)],
-            'benchmark_average_eq_real': [(D,)],
-            'benchmark_midpoint_real': [(D,)],
-            'benchmark_bounding_box_real': [(D,)],
-            'benchmark_cyclic_dependency_real': [(D,)],
-        }
-    },
-    'int_benchmarks': {
-        'elimination_func': full_ramsey_elimination_int,
-        'args': {
-            # Core benchmarks
-            'benchmark_half_int': [(D, 50)],
-            'benchmark_equal_exists_int': [(D,)],
-            'benchmark_equal_exists_2_int': [(D,)],
-            'benchmark_equal_free_int': [(D,)],
-            'benchmark_equal_free_2_int': [(D,)],
-            'benchmark_dickson_int': [(D,)],
-            
-            # Extended benchmarks
-            'benchmark_congruence_mod_m': [(D, 2)],
-            'benchmark_sum_even': [(D,)],
-            'benchmark_diff_in_kZ': [(D, 3)],
-            'benchmark_sum_eq_C': [(2, 0)],
-            'benchmark_dot_product_zero': [(D, [1]*D)],
-            'benchmark_sum_zero_hyperplane': [(D,)],
-            'benchmark_diff_set': [(D, [[0]*D, [10]*D, [-10]*D])],
-            'benchmark_scheduling_overlap': [(2,)],
-            'benchmark_divisibility_by_k': [(D, 4)],
-            'benchmark_affine_progression': [(D, [1]*D)],
-            'benchmark_matrix_kernel': [(D, [[1]*D])],
-            'benchmark_stabilizer': [(D, [[1] * D] * 1)],
-            'benchmark_weighted_sum_eq': [(D, list(range(1, D+1)))],
-            'benchmark_equal_first_k': [(D, 3)],
-            'benchmark_sum_parity': [(D,)],
-            'benchmark_prefix_monotone': [(D,)],
-            'benchmark_sum_zero_or_C': [(D, 5)],
-            'benchmark_cross_coordinate_eq': [(D,)],
-            'benchmark_mixed_sign_pair': [(D,)],
-            'benchmark_sorted_chain_int': [(D,)],
-            'benchmark_linear_average_int': [(D,)],
-            'benchmark_cyclic_dependency_int': [(D,)],
-            'benchmark_dynamic_gap_chain_int': [(D,)],
-            'benchmark_bounding_box_int': [(D,)],
-            'benchmark_linear_average_eq_int': [(D,)],
+
+def get_builtin_configs(dimension: int) -> Dict[str, Dict[str, Any]]:
+    """Generate built-in benchmark configurations with the given dimension."""
+    return {
+        'real_benchmarks': {
+            'elimination_func': full_ramsey_elimination_real,
+            'args': {
+                'benchmark_half_real': [(dimension, 0.0)],
+                'benchmark_equal_exists_real': [(dimension,)],
+                'benchmark_equal_free_real': [(dimension,)],
+                'benchmark_dickson_real': [(dimension,)],
+                'benchmark_sorted_chain_real': [(dimension,)],
+                'benchmark_average_real': [(dimension,)],
+                'benchmark_average_eq_real': [(dimension,)],
+                'benchmark_midpoint_real': [(dimension,)],
+                'benchmark_bounding_box_real': [(dimension,)],
+                'benchmark_cyclic_dependency_real': [(dimension,)],
+            }
+        },
+        'int_benchmarks': {
+            'elimination_func': full_ramsey_elimination_int,
+            'args': {
+                # Core benchmarks
+                'benchmark_half_int': [(dimension, 50)],
+                'benchmark_equal_exists_int': [(dimension,)],
+                'benchmark_equal_exists_2_int': [(dimension,)],
+                'benchmark_equal_free_int': [(dimension,)],
+                'benchmark_equal_free_2_int': [(dimension,)],
+                'benchmark_dickson_int': [(dimension,)],
+                
+                # Extended benchmarks
+                'benchmark_congruence_mod_m': [(dimension, 2)],
+                'benchmark_sum_even': [(dimension,)],
+                'benchmark_diff_in_kZ': [(dimension, 3)],
+                'benchmark_sum_eq_C': [(2, 0)],
+                'benchmark_dot_product_zero': [(dimension, [1]*dimension)],
+                'benchmark_sum_zero_hyperplane': [(dimension,)],
+                'benchmark_diff_set': [(dimension, [[0]*dimension, [10]*dimension, [-10]*dimension])],
+                'benchmark_scheduling_overlap': [(2,)],
+                'benchmark_divisibility_by_k': [(dimension, 4)],
+                'benchmark_affine_progression': [(dimension, [1]*dimension)],
+                'benchmark_matrix_kernel': [(dimension, [[1]*dimension])],
+                'benchmark_stabilizer': [(dimension, [[1] * dimension] * 1)],
+                'benchmark_weighted_sum_eq': [(dimension, list(range(1, dimension+1)))],
+                'benchmark_equal_first_k': [(dimension, 3)],
+                'benchmark_sum_parity': [(dimension,)],
+                'benchmark_prefix_monotone': [(dimension,)],
+                'benchmark_sum_zero_or_C': [(dimension, 5)],
+                'benchmark_cross_coordinate_eq': [(dimension,)],
+                'benchmark_mixed_sign_pair': [(dimension,)],
+                'benchmark_sorted_chain_int': [(dimension,)],
+                'benchmark_linear_average_int': [(dimension,)],
+                'benchmark_cyclic_dependency_int': [(dimension,)],
+                'benchmark_dynamic_gap_chain_int': [(dimension,)],
+                'benchmark_bounding_box_int': [(dimension,)],
+                'benchmark_linear_average_eq_int': [(dimension,)],
+            }
         }
     }
-}
 
 # --- Utility Classes ---
 
@@ -363,22 +366,15 @@ def run_single_benchmark(
             error=str(e)
         )
 
-def get_benchmark_functions(module):
-    """Extract benchmark functions from a module."""
-    return [
-        (name, obj) 
-        for name, obj in inspect.getmembers(module, inspect.isfunction) 
-        if name.startswith('benchmark_')
-    ]
-
-def get_benchmark_config(module_name: str, benchmark_module) -> Dict[str, Any]:
+def get_benchmark_config(module_name: str, benchmark_module, dimension: int) -> Dict[str, Any]:
     """Get benchmark configuration, trying built-in configs first, then auto-discovery."""
     # Try built-in configuration first
-    if module_name in BUILTIN_CONFIGS:
-        return BUILTIN_CONFIGS[module_name]
+    builtin_configs = get_builtin_configs(dimension)
+    if module_name in builtin_configs:
+        return builtin_configs[module_name]
     
     # Fall back to auto-discovery
-    return discover_benchmark_config(benchmark_module)
+    return discover_benchmark_config(benchmark_module, dimension)
 
 def list_available_benchmarks(module, config: Dict[str, Any]) -> None:
     """List all available benchmarks in a module."""
@@ -469,8 +465,8 @@ def output_table(results: List[BenchmarkResult]) -> None:
               f"{result.elim_time_ms:>10.2f} {result.solve_time_ms:>10.2f} "
               f"{result.total_time_ms:>10.2f} {result.is_sat!s:>5} {status:<10}")
 
-def run_benchmarks(module_name: str, config: BenchmarkConfig, benchmark_name: str | None = None) -> List[BenchmarkResult]:
-    """Run benchmarks for a given module, optionally a single benchmark."""
+def run_benchmarks(module_name: str, config: BenchmarkConfig, benchmark_names: List[str] | None = None) -> List[BenchmarkResult]:
+    """Run benchmarks for a given module, optionally a subset of benchmarks."""
     # Import the benchmark module
     try:
         module_path = module_name.replace('.py', '')
@@ -478,17 +474,26 @@ def run_benchmarks(module_name: str, config: BenchmarkConfig, benchmark_name: st
     except ModuleNotFoundError:
         raise ImportError(f"Module '{module_name}' not found in the search path.")
     
-    # Get benchmark configuration
-    bench_config = get_benchmark_config(module_name, benchmark_module)
+    # Get benchmark configuration with the specified dimension
+    bench_config = get_benchmark_config(module_name, benchmark_module, config.dimension)
     
     # Get benchmark functions
     bench_funcs = get_benchmark_functions(benchmark_module)
     
-    if benchmark_name:
-        bench_funcs = [bf for bf in bench_funcs if bf[0] == benchmark_name]
+    if benchmark_names:
+        # Filter to only requested benchmarks
+        bench_funcs = [bf for bf in bench_funcs if bf[0] in benchmark_names]
         if not bench_funcs:
-            print(f"No benchmark named '{benchmark_name}' found in '{module_name}'", file=sys.stderr)
+            available = [name for name, _ in get_benchmark_functions(benchmark_module)]
+            print(f"No benchmarks matching {benchmark_names} found in '{module_name}'", file=sys.stderr)
+            print(f"Available benchmarks: {', '.join(available)}", file=sys.stderr)
             return []
+        
+        # Check if any requested benchmarks were not found
+        found_names = {name for name, _ in bench_funcs}
+        missing = set(benchmark_names) - found_names
+        if missing:
+            print(f"Warning: Benchmarks not found: {', '.join(missing)}", file=sys.stderr)
 
     if not bench_funcs:
         print(f"No benchmark functions found in '{module_name}'", file=sys.stderr)
@@ -501,7 +506,10 @@ def run_benchmarks(module_name: str, config: BenchmarkConfig, benchmark_name: st
     total_benchmarks = sum(len(arg_map.get(name, [()])) for name, _ in bench_funcs)
     current = 0
     
-    print(f"Running {total_benchmarks} benchmark configurations...", file=sys.stderr)
+    if benchmark_names:
+        print(f"Running {total_benchmarks} benchmark configurations (subset: {', '.join(benchmark_names)}) with dimension={config.dimension}...", file=sys.stderr)
+    else:
+        print(f"Running {total_benchmarks} benchmark configurations with dimension={config.dimension}...", file=sys.stderr)
     
     for name, func in bench_funcs:
         args_list = arg_map.get(name, [()])
@@ -558,10 +566,16 @@ def main():
         default=50,
         help="Maximum length for argument display (default: 50)"
     )
-
     parser.add_argument(
         "--benchmark",
-        help="Name of a single benchmark to run (default: run all benchmarks)"
+        nargs='*',
+        help="Name(s) of benchmark(s) to run (default: run all benchmarks). Can specify multiple benchmarks."
+    )
+    parser.add_argument(
+        "--dimension", "-d",
+        type=int,
+        default=100,
+        help="Dimension parameter for benchmarks (default: 100)"
     )
     
     args = parser.parse_args()
@@ -570,7 +584,8 @@ def main():
         timeout_seconds=args.timeout,
         max_arg_display_length=args.max_arg_length,
         output_format=args.format,
-        verbose=args.verbose
+        verbose=args.verbose,
+        dimension=args.dimension
     )
     
     try:
@@ -579,13 +594,13 @@ def main():
         benchmark_module = importlib.import_module(module_path)
         
         if args.list_benchmarks:
-            bench_config = get_benchmark_config(args.module, benchmark_module)
+            bench_config = get_benchmark_config(args.module, benchmark_module, config.dimension)
             list_available_benchmarks(benchmark_module, bench_config)
             return
         
         # Run benchmarks
         if args.benchmark:
-            results = run_benchmarks(args.module, config, benchmark_name=args.benchmark)
+            results = run_benchmarks(args.module, config, benchmark_names=args.benchmark)
         else:
             results = run_benchmarks(args.module, config)
         
