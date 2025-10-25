@@ -1,89 +1,89 @@
-# Ramsey Elimination Tool
+# REAL - Ramsey Elimination in Arithmetic Logics
 
-A high-performance tool for eliminating Ramsey quantifiers in SMT-LIB formulas, producing standard SMT-LIB output compatible with solvers like Z3 and CVC5.
+REAL is a high-performance tool for eliminating Ramsey quantifiers in SMT-LIB formulas, producing standard SMT-LIB output compatible with solvers like Z3 and CVC5. It enables users to work with advanced quantified formulas while remaining within standard SMT-LIB frameworks.
 
 ## Features
 
-* **Ramsey Quantifier Elimination**: Efficiently removes `Ramsey` quantifiers from SMT-LIB formulas.
-* **Linear Elimination**: The elimination process is linear in both output size and runtime. 
+* **Ramsey Quantifier Elimination**: Efficiently removes `ramsey` quantifiers from SMT-LIB formulas.
+* **Linear Elimination**: The elimination algorithm is linear in both output size and runtime.
 * **Supported Theories**: Handles Linear Integer Arithmetic (LIA), Linear Real Arithmetic (LRA), and Linear Integer-Real Arithmetic (LIRA).
-* **Formula Statistics**: Optionally prints formula sizes before and after elimination.
-* **Timing Support**: Optionally measures elimination runtime.
+* **Formula Statistics & Timing**: Optionally provides formula size information and runtime measurements for the elimination process.
+* **SMT-LIB Compatibility**: Generates output fully compatible with popular solvers like Z3 and CVC5.
 
 ## Extending SMT-LIB
 
-Since our goal is to take SMT-LIB input and produce SMT-LIB output, we extend SMT-LIB syntax to express the new Ramsey quantifier. Following SMT-LIB conventions, we define:
+REAL extends SMT-LIB syntax to represent Ramsey quantifiers. Two forms are supported:
 
 ```
-term ::= ... 
-       | (ramsey (sorted_var+) (sorted_var+) term)
-       | (ramsey sort (symbol+) (symbol+) term)
+(ramsey (sorted_var+) (sorted_var+) term)
+(ramsey sort (symbol+) (symbol+) term)
+```
 
+* The first form allows general Ramsey quantifiers over sorted variables.
+* The second form is a shorthand for quantifiers restricted to a single sort (integer or real).
 
-The first form `(ramsey (sorted_var+) (sorted_var+) term)` allows general Ramsey quantifiers over sorted variables.
-The second form `(ramsey sort (symbol+) (symbol+) term)` is a shorthand for integer-only or real-only quantifiers.
-
-### Example SMT-LIB Snippet
+**Example SMT-LIB usage**:
 
 ```smt2
-(assert (ramsey ((Int x_1) (Real x_2)) ((Int y_1) (Real y_2)) (and (> x_1 0) (< y_1 10) (< x_2 y_1) (< x_1 y_2))))
+(assert (ramsey ((Int x_1) (Real x_2)) ((Int y_1) (Real y_2))
+        (and (> x_1 0) (< y_1 10) (< x_2 y_1) (< x_1 y_2))))
 (check-sat)
 ```
+
+This asserts a formula with Ramsey quantification over pairs of integer and real variables.
 
 ## Installation
 
 ```bash
-git clone https://github.com/DarkVanityOfLight/ramsey-linear-arithmetics
+git clone https://github.com/DarkVanityOfLight/REAL
 cd ramsey-elimination
 pipenv install
 ```
 
 ## Usage
 
+To run the elimination:
+
 ```bash
 pipenv shell
-python elimination.py <input_file> [options]
+python elimination.py <input_file>
 ```
 
-**Arguments**:
-
-* `<input_file>`: Path to the input SMT-LIB (`.smt2`) file containing Ramsey quantifiers.
-
-**Options**:
-
-* `--time` or `-t`: Measure and display the time taken for elimination.
-* `--size` or `-s`: Print the formula size before and after elimination.
-
-**Example**:
+Replace `<input_file>` with your SMT-LIB file containing Ramsey quantifiers. For a list of available options, run:
 
 ```bash
-python main.py example.smt2 -t -s
+python elimination.py --help
 ```
 
 ## Benchmarking
 
-Run benchmarks on different sets of formulas:
+Benchmarks can be run on different sets of formulas to evaluate performance:
 
 ```bash
-python benchmark.py <module> [options]
+python benchmark.py <module>
 ```
 
-**Arguments**:
+Use `--help` to see available modules, output formats, and timing options.
 
-* `<module>`: Benchmark module name (e.g., `real_benchmarks`, `int_benchmarks`, `my_custom_benchmarks`).
+## Architecture
 
-**Options**:
+REAL is organized into three main packages:
 
-* `--format`: Output format (`csv`, `json`, or `table`; default: `csv`).
-* `--timeout`: Timeout in seconds for each benchmark.
-* `--verbose` or `-v`: Enable verbose output.
-* `--list-benchmarks`: List available benchmarks and exit.
-* `--max-arg-length`: Maximum length for argument display (default: 50).
+### Ramsey Extension (`ramsey_extensions`)
 
-**Example**:
+* Adds PySMT support for Ramsey quantifiers, modulo operations, and `ToInteger` (floor) operations.
+* Provides parsing and serialization of formulas, variable substitution, free-variable analysis, and extended type checking.
+* Node definitions are in `operators.py` and `fnode.py`, while walkers and utilities facilitate manipulation of formulas and integration with PySMT.
 
-```bash
-python benchmark.py real_benchmarks --format table --timeout 10 -v
-```
+### Ramsey Quantifier Elimination (`ramsey_elimination`)
 
-This will run the `real_benchmarks` module, print verbose output in table format, and timeout any single benchmark after 10 seconds.
+* Implements elimination routines for LIA, LRA, and LIRA (which uses both LIA and LRA routines).
+* `existential_elimination.py`: Utilities for eliminating existential quantifiers under a Ramsey quantifier.
+* `formula_utils.py`: Functions for walking the AST, creating formulas, and representing/manipulating atoms.
+* `simplifications.py`: Normalizes atoms and preprocesses formulas for efficient elimination.
+* `monadic_decomposition.py`: Checks for monadic decomposability, requiring a compatible PySMT solver.
+* `eliminate_ramsey.py`: Top-level interface automatically detects the theory and applies the appropriate elimination routine.
+
+### Benchmarking & Testing
+
+* `benchmark.py` provides scripts and utilities to run benchmarks, measure runtime, and report formula size changes before and after elimination.
