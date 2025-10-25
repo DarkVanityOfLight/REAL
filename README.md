@@ -87,6 +87,7 @@ REAL is organized into three main packages:
 ### Benchmarking & Testing
 
 * `benchmark.py` provides scripts and utilities to run benchmarks, measure runtime, and report formula size changes before and after elimination.
+* `tests` contains several unit tests for the elimination procedure and can be run using `pytest`
 
 ## Generated Examples
 In combinations with [FASTer](https://tapas.labri.fr/wp/?page_id=23) and [Alchemist](https://github.com/DarkVanityOfLight/alchemist), REAL 
