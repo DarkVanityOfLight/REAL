@@ -12,8 +12,6 @@ from ramsey_elimination.simplifications import (
     make_int_input_format,
 )
 
-get_env().enable_infix_notation = True
-
 
 class TestArithmeticSolver:
     """Test class for arithmetic_solver function"""

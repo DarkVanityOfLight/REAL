@@ -87,3 +87,9 @@ REAL is organized into three main packages:
 ### Benchmarking & Testing
 
 * `benchmark.py` provides scripts and utilities to run benchmarks, measure runtime, and report formula size changes before and after elimination.
+
+## Generated Examples
+In combinations with [FASTer](https://tapas.labri.fr/wp/?page_id=23) and [Alchemist](https://github.com/DarkVanityOfLight/alchemist), REAL 
+provides an automated pipeline for checking liveness properties of a broad class of integer counter systems,
+the `generated` directory, provides several example files of this.
+

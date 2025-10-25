@@ -1,8 +1,30 @@
 
 from ramsey_elimination.formula_utils import map_atoms
-from ramsey_elimination.mixed_elimination import compute_seperation
+from ramsey_elimination.mixed_elimination import compute_type_separation
 
+from ramsey_elimination.simplifications import make_real_input_format
+from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import *
+
+def compute_separation(f):
+    # Extract free variables and parse nested quantifier structure
+    free_vars = f.get_free_variables()
+
+    # Step 1: Convert <= to (< OR =) for easier processing
+    def convert_le_to_lt_or_eq(atom: ExtendedFNode) -> ExtendedFNode:
+        if atom.is_le():
+            left, right = atom.arg(0), atom.arg(1)
+            return Or(LT(left, right), Equals(left, right)) #type: ignore
+        return atom
+    
+    no_le_formula = map_atoms(f, convert_le_to_lt_or_eq)
+    
+    # Step 2: Normalize (push negations inward)
+    normalized = make_real_input_format(no_le_formula)
+    
+    # Step 3: Separate integer and real types
+    separated, var_mapping = compute_type_separation(normalized, free_vars)
+    return separated
 
 def _validate_separation(f):
     def validate_atom(atom):
@@ -13,7 +35,7 @@ def _validate_separation(f):
     return True
 
 def _general_seperation(f):
-    _validate_separation(compute_seperation(f))
+    _validate_separation(compute_separation(f))
 
 def test_simple_lt():
     x = Symbol("x", REAL)

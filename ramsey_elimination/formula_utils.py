@@ -93,7 +93,7 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[
         sub = stack.pop()
 
         if sub.is_equals():
-            if sub.arg(0).is_mod():
+            if contains_mod(sub):
                 modeqs.add(sub)
             else:
                 eqs.add(sub)
@@ -103,7 +103,7 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[
 
         elif sub.is_not():
             # A negated mod-equality counts as a modular equality atom
-            if sub.arg(0).is_mod():
+            if contains_mod(sub):
                 modeqs.add(sub)
 
         else:

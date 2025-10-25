@@ -1,4 +1,4 @@
-from pysmt.shortcuts import Int, Symbol, And, Equals, LT, Not, Plus, Times, Minus
+from pysmt.shortcuts import Int, Symbol, And, Equals, LT, Not, Plus, Times, Minus, get_env
 from pysmt.typing import INT
 import pytest
 
@@ -10,14 +10,11 @@ from ramsey_elimination.formula_utils import (
     map_atoms,
     ast_to_terms
 )
-
-# Create some sample symbols
-x = Symbol('x', INT)
-y = Symbol('y', INT)
-a = Symbol('a', INT)
-
+from ramsey_extensions.shortcuts import Mod
 
 def test_is_atom_basic_relations():
+    x = Symbol('x', INT)
+    y = Symbol('y', INT)
     # Equality is an atom
     eq = Equals(x, y)
     assert is_atom(eq)
@@ -30,25 +27,35 @@ def test_is_atom_basic_relations():
 
 
 def test_collect_atoms_partitioning():
+    x = Symbol('x', INT)
+    y = Symbol('y', INT)
+    a = Symbol('a', INT)
     # Build a formula with an equality, a negated eq, and an inequality
-    mod_eq = Equals(x, y)  # assume no MOD_NODE_TYPE in tests
-    neg_mod = Not(Equals(a, Int(3)))
+    eq = Equals(x, y)
+    mod_eq = Equals(Mod(x, Int(3)), y)
+    neg_mod = Not(Equals(Mod(a, Int(3)), Int(3)))
     ineq = LT(a, Int(10))
-    formula = And(mod_eq, neg_mod, ineq)
+    formula = And(mod_eq, neg_mod, ineq, eq)
 
     eqs, modeqs, ineqs = collect_atoms(formula)
-    # We expect one pure equality, one "mod" equality (negated), and one inequality
-    assert eqs == (mod_eq,)
-    assert neg_mod in modeqs
-    assert ineqs == (ineq,)
+
+    assert set(eqs) == {eq}
+    assert set(modeqs) == {mod_eq, neg_mod}
+    assert set(ineqs) == {ineq}
 
 def test_reconstruct_from_coeff_map_zero():
+    x = Symbol('x', INT)
+    y = Symbol('y', INT)
+    a = Symbol('a', INT)
     # All zero coefficients and zero constant
     empty = reconstruct_from_coeff_map({}, 0, Int)
     assert empty.is_int_constant() and empty.constant_value() == 0
 
 
 def test_reconstruct_from_coeff_map_mixed():
+    x = Symbol('x', INT)
+    y = Symbol('y', INT)
+    a = Symbol('a', INT)
     m = {x: 1, y: 2}
     node = reconstruct_from_coeff_map(m, 3, Int)
     # Should equal Plus(x, Times(2, y), 3)
@@ -61,6 +68,9 @@ def test_reconstruct_from_coeff_map_mixed():
 
 
 def test_apply_to_atoms_replaces_atoms():
+    x = Symbol('x', INT)
+    y = Symbol('y', INT)
+    a = Symbol('a', INT)
     # And(x < 5, Equals(y, 1), Plus(x,y) > Int(0))
     f = And(LT(x, Int(5)), Equals(y, Int(1)), LT(Plus(x, y), Int(0)))
     transformed = map_atoms(f, lambda atm: Equals(Int(42), Int(42)))
