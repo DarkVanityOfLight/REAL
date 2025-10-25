@@ -1,7 +1,7 @@
-from typing import Dict, List, Optional, Sequence, Tuple, cast
+from typing import List, Optional, Tuple, cast
 
 from pysmt import operators
-from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real, Symbol
+from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, fresh_bool_vector, fresh_real_vector, reconstruct_from_coeff_map
@@ -63,6 +63,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     sub_x_c_for_var1 = dict(zip(vars1, x_c))
     sub_x_c_for_var2 = dict(zip(vars2, x_c))
 
+    # Profile variables
     lambdas: List[Optional[ExtendedFNode]] = [None] * n
     xis: List[Optional[ExtendedFNode]] = [None] * n
     deltas: List[Optional[ExtendedFNode]] = [None] * n
@@ -233,11 +234,11 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
 
 def full_ramsey_elimination_real(formula: ExtendedFNode):
+    """Perform Ramsey elimination on a real-valued formula, including pre-processing."""
     assert formula.is_ramsey()
-
     f = make_real_input_format(formula)
 
-    # Will introduce a new two new terms(v_0 + w_1 and distinctness) and 4 atoms for every existentially quantified variable
+    # Eliminate inner existential quantifiers if present
     if formula.arg(0).is_exists():
         f = eliminate_existential_quantifier(f)
 

@@ -2,7 +2,7 @@ from typing import Mapping, Tuple, Dict, Set, Union
 
 from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
-from pysmt.shortcuts import FALSE, GT, LE,TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus, Real
+from pysmt.shortcuts import FALSE, GT, TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import MOD_NODE_TYPE

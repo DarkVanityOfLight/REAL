@@ -1,13 +1,11 @@
 from itertools import chain
 from typing import List, Mapping, Optional, Set, Tuple, cast
 from pysmt.shortcuts import (GE, LE, LT, And, Equals, Exists, FreshSymbol, 
-                            Implies, Int, Minus, Not, Or, Plus, Real, Symbol, 
-                            Times, ToReal, substitute)
+                            Implies, Int, Minus, Not, Or, Plus, Real, ToReal, substitute)
 from pysmt.typing import BOOL, INT, REAL, PySMTType, _IntType, _RealType
 import pysmt.operators as operators
-import pysmt.typing as typ
 
-from ramsey_elimination.existential_elimination import eliminate_mixed_existential_quantifier
+from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.integer_elimination import full_ramsey_elimination_int
 from ramsey_elimination.real_elimination import full_ramsey_elimination_real
 from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
@@ -760,7 +758,7 @@ def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> Extended
     next = requantified
     # Step 5: Eliminate existential quantifiers
     if quantified_formula.arg(0).is_exists():
-        next = eliminate_mixed_existential_quantifier(requantified)
+        next = eliminate_existential_quantifier(requantified)
         print(f"Existential eliminated: {next.size()}")
     
     # Step 6: Apply mixed Ramsey elimination
@@ -771,6 +769,6 @@ def eliminate_mixed_ramsey_from_separated(quantified_formula: ExtendedFNode) -> 
     Eliminates mixed existential and Ramsey quantifiers from a formula
     that is already type-separated.
     """
-    next_formula = (eliminate_mixed_existential_quantifier(quantified_formula)
+    next_formula = (eliminate_existential_quantifier(quantified_formula)
                     if quantified_formula.arg(0).is_exists() else quantified_formula)
     return eliminate_ramsey_mixed(next_formula)

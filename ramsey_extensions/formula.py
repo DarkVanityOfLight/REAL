@@ -74,15 +74,15 @@ class ExtendedFormulaManager(FormulaManager):
 
     def ToInt(self, formula):
         """ Cast a formula to int type. """
-        t = self.env.stc.get_type(formula)
-        if t == typing.INT:
+        T = self.env.stc.get_type(formula)
+        if T == typing.INT:
             # Ignore casting of an Int
             return formula
-        elif t == typing.REAL:
+        elif T == typing.REAL:
             if formula.is_real_constant():
                 return self.Int(int(formula.constant_value()))
             return self.create_node(node_type=operators.TOINT_NODE_TYPE,
                                     args=(formula,))
         else:
             raise PysmtTypeError("Argument is of type %s, but REAL was "
-                                "expected!\n" % t)
+                                "expected!\n" % T)

@@ -22,7 +22,7 @@ class ExtendedFNode(FNode):
         return self.node_type() == MOD_NODE_TYPE
 
     def is_toint(self) -> bool:
-        """Return True if this node is a Modulo operator."""
+        """Return True if this node is a ToInt operator."""
         return self.node_type() == TOINT_NODE_TYPE
 
     def is_quantifier(self) -> bool:

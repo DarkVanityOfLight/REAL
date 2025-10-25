@@ -1,8 +1,5 @@
 from pysmt.environment import Environment, push_env
 from pysmt.oracles import FreeVarsOracle, QuantifierOracle, SizeOracle, TheoryOracle
-from pysmt.substituter import Substituter
-from pysmt.walkers import DagWalker
-from pysmt.walkers.dag import Walker
 
 from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE, TOINT_NODE_TYPE
 from ramsey_extensions.printers import ExtendedSerializer

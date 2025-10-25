@@ -52,34 +52,56 @@ def get_formula_fname(script_fname, environment=None, strict=True):
 class ExtendedSmtLibParser(SmtLibParser):
     def __init__(self, environment=None, interactive=False):
         super().__init__(environment, interactive)
+
+        # Register new parsers
         self.interpreted["ramsey"] = self._enter_ramsey
         self.interpreted["mod"] = self._operator_adapter(self._modulo)
         self.interpreted["to_int"] = self._operator_adapter(self._to_int)
 
 
     def _enter_ramsey(self, stack, tokens, key):
+        """
+        Parse a (ramsey ...) construct.
+
+        Supported syntaxes:
+        1. Uniformly typed:
+            (ramsey Int (x y) (a b) phi)
+            -> all quantified variables share type Int
+
+        2. Mixed (per-variable types, no explicit 'mixed' keyword):
+            (ramsey ((x Int) (a Real)) ((y Int) (b Real)) phi)
+
+        Parsing stages:
+        1. Detect whether the first token after 'ramsey' is a type or a var-list.
+            - If it's a bare type (e.g., Int), parse as uniform.
+            - If it's a list of typed pairs ((x Int) ...), parse as mixed.
+        2. Parse both variable lists, binding variables in cache.
+        3. Parse the body expression.
+        4. Push a deferred exit-handler (_exit_ramsey) that unbinds and constructs
+            the Ramsey node at the end.
+        """
+
         is_mixed = False
         ty = None
 
+        # --- Step 1: detect typing mode ---
         tok = tokens.consume()
         if tok == '(':
-            # we already consumed '(' so read the next token
-            next_tok = tokens.consume()
-            if next_tok.lower() == "mixed":
+            next_tok = tokens.peek()
+            if next_tok == '(':
+                # Starts with ((x Int) ...) → mixed mode
                 is_mixed = True
-                # next_tok already consumed; nothing to push back
+                tokens.add_extra_token('(')  # put back for var-list parsing
             else:
-                tokens.add_extra_token(next_tok)       # put it back for parse_type
+                # Starts with (Int) → uniform mode
                 ty = self.parse_type(tokens, "expression")
-            self.consume_closing(tokens, "expression")
+                self.consume_closing(tokens, "expression")
         else:
-            if tok.lower() == "mixed":
-                is_mixed = True
-            else:
-                tokens.add_extra_token(tok)
-                ty = self.parse_type(tokens, "expression")
+            # No parentheses → simple type like "Int"
+            tokens.add_extra_token(tok)
+            ty = self.parse_type(tokens, "expression")
 
-        # 2) First var-list: (x1 x2 …)
+        # --- Step 2: first var-list ---
         self.consume_opening(tokens, "expression")
         vrs1 = []
         while True:
@@ -88,18 +110,21 @@ class ExtendedSmtLibParser(SmtLibParser):
                 break
 
             if is_mixed:
-                tokens.add_extra_token(name)            # put token back for parse_atom
+                # Expect tuples like (x Int)
+                tokens.add_extra_token(name)
+                self.consume_opening(tokens, "expression")
                 vname = self.parse_atom(tokens, "expression")
                 typename = self.parse_type(tokens, "expression")
+                self.consume_closing(tokens, "expression")
                 var = self._get_quantified_var(vname, typename)
-                self.cache.bind(vname, var)
-                vrs1.append((vname, var))
             else:
                 var = self._get_quantified_var(name, ty)
-                self.cache.bind(name, var)
-                vrs1.append((name, var))
+                vname = name
 
-        # 3) Second var-list: (y1 y2 …)
+            self.cache.bind(vname, var)
+            vrs1.append((vname, var))
+
+        # --- Step 3: second var-list ---
         self.consume_opening(tokens, "expression")
         vrs2 = []
         while True:
@@ -108,21 +133,23 @@ class ExtendedSmtLibParser(SmtLibParser):
                 break
 
             if is_mixed:
-                tokens.add_extra_token(name)            # put token back for parse_atom
+                tokens.add_extra_token(name)
+                self.consume_opening(tokens, "expression")
                 vname = self.parse_atom(tokens, "expression")
                 typename = self.parse_type(tokens, "expression")
+                self.consume_closing(tokens, "expression")
                 var = self._get_quantified_var(vname, typename)
-                self.cache.bind(vname, var)
-                vrs2.append((vname, var))
             else:
                 var = self._get_quantified_var(name, ty)
-                self.cache.bind(name, var)
-                vrs2.append((name, var))
+                vname = name
 
-        # 4) Parse the embedded formula under these bindings
+            self.cache.bind(vname, var)
+            vrs2.append((vname, var))
+
+        # --- Step 4: parse body formula ---
         body = self.get_expression(tokens)
 
-        # 6) Push exit-handler + its arguments
+        # --- Step 5: push exit-handler ---
         stack[-1].append(self._exit_ramsey)
         stack[-1].append(vrs1)
         stack[-1].append(vrs2)
