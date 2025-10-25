@@ -1,13 +1,12 @@
-from typing import Mapping, Tuple, Dict, Set, Union
+from typing import Mapping, Tuple, Set, Union
 
 from pysmt.operators import EQUALS, NOT
 import pysmt.operators as operators
 from pysmt.shortcuts import FALSE, GT, TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus
 
 from ramsey_extensions.fnode import ExtendedFNode
-from ramsey_extensions.operators import MOD_NODE_TYPE
 
-from ramsey_elimination.formula_utils import create_node
+from ramsey_elimination.formula_utils import contains_mod, create_node
 
 type SumOfTerms = Mapping[ExtendedFNode, Union[int, float]]
 type Numeric = Union[int, float]
@@ -66,15 +65,6 @@ def arithmetic_solver(
     const: Numeric = right_const - left_const
 
     return new_left, new_right, const
-
-def contains_mod(node: ExtendedFNode) -> bool:
-    """Check if a node contains a modulo operation anywhere in its subtree."""
-    if node.node_type() == MOD_NODE_TYPE:
-        return True
-    for arg in node.args():
-        if contains_mod(arg):
-            return True
-    return False
 
 def _make_input_format_logic(node: ExtendedFNode, is_int: bool) -> ExtendedFNode:
     """
@@ -192,8 +182,3 @@ def make_real_input_format(node: ExtendedFNode) -> ExtendedFNode:
     """
     return _make_input_format_logic(node, is_int=False)
 
-def apply_subst(coeffs: Mapping[ExtendedFNode, Union[int, float]], subst: Mapping[ExtendedFNode, ExtendedFNode]) -> Dict[ExtendedFNode, Union[int, float]]:
-    """
-    Apply a substitution map to a coefficient map, keeping unmapped keys.
-    """
-    return {subst.get(var, var): coeff for var, coeff in coeffs.items()}

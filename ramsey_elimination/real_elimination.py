@@ -4,8 +4,8 @@ from pysmt import operators
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
-from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, fresh_bool_vector, fresh_real_vector, reconstruct_from_coeff_map
-from ramsey_elimination.simplifications import apply_subst, arithmetic_solver, make_real_input_format
+from ramsey_elimination.formula_utils import apply_subst, ast_to_terms, collect_atoms, fresh_bool_vector, fresh_real_vector, reconstruct_from_coeff_map
+from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import RAMSEY_NODE_TYPE
 

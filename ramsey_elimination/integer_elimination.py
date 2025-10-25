@@ -8,8 +8,8 @@ from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.operators import MOD_NODE_TYPE, RAMSEY_NODE_TYPE
 from ramsey_extensions.shortcuts import Mod, Ramsey
 
-from ramsey_elimination.simplifications import arithmetic_solver, make_int_input_format, apply_subst
-from ramsey_elimination.formula_utils import ast_to_terms, collect_atoms, fresh_bool_vector, fresh_int_vector, reconstruct_from_coeff_map, ensure_mod
+from ramsey_elimination.simplifications import arithmetic_solver, make_int_input_format
+from ramsey_elimination.formula_utils import apply_subst, ast_to_terms, collect_atoms, fresh_bool_vector, fresh_int_vector, reconstruct_from_coeff_map, ensure_mod
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 
 

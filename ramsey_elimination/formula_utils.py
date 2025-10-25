@@ -253,3 +253,18 @@ def ast_to_terms(node: ExtendedFNode) -> Tuple[Dict[ExtendedFNode, Union[int, fl
     terms, const = process(node)
     # Remove zero coefficients
     return {s: c for s, c in terms.items() if c != 0}, const
+
+def apply_subst(coeffs: Mapping[ExtendedFNode, Union[int, float]], subst: Mapping[ExtendedFNode, ExtendedFNode]) -> Dict[ExtendedFNode, Union[int, float]]:
+    """
+    Apply a substitution map to a coefficient map, keeping unmapped keys.
+    """
+    return {subst.get(var, var): coeff for var, coeff in coeffs.items()}
+
+def contains_mod(node: ExtendedFNode) -> bool:
+    """Check if a node contains a modulo operation anywhere in its subtree."""
+    if node.node_type() == MOD_NODE_TYPE:
+        return True
+    for arg in node.args():
+        if contains_mod(arg):
+            return True
+    return False
