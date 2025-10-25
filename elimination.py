@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("input_file", help="Path to the input .smt2 file")
     parser.add_argument("--time", "-t", action="store_true", help="Measure elimination time")
     parser.add_argument("--size", "-s", action="store_true", help="Print formula size before and after elimination")
+    parser.add_argument("--output", "-o", help="Path to the output .smt2 file")
 
     args = parser.parse_args()
     input_path = Path(args.input_file)
@@ -42,8 +43,11 @@ if __name__ == "__main__":
 
     str_elim = to_smtlib(eliminated, False)
 
-    output_path = input_path.with_suffix("")
-    output_file = output_path.with_name(f"{output_path.name}_elim.smt2")
+    if args.output:
+        output_file = Path(args.output)
+    else:
+        output_path = input_path.with_suffix("")
+        output_file = output_path.with_name(f"{output_path.name}_elim.smt2")
 
     with output_file.open("w", encoding="utf-8") as f:
         f.write(f"(assert {str_elim})\n(check-sat)")
