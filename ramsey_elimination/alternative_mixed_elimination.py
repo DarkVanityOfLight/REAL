@@ -262,14 +262,15 @@ def mixed_elimination(phi: ExtendedFNode):
     w1_R = fresh_real_vector("w1_R_{}%s", num_impure_ineqs)
     w2_R = fresh_real_vector("w2_R_{}%s", num_impure_ineqs)
     
-    R_replace_map = {
-        decomp.real_dummy: Plus(v1_R[i], w1_R[i])
-        for i, decomp in enumerate(decomposition_mapping.values())
-        if isinstance(decomp, StrictInequalityDecomposition)
-    }
+    R_replace_map = {}
+    idx = 0
+    for decomp in decomposition_mapping.values():
+        if isinstance(decomp, StrictInequalityDecomposition):
+            R_replace_map[decomp.real_dummy] = Plus(v1_R[idx], w1_R[idx])
+            idx += 1
 
     old_int_len = len(int_vars1)
-    old_real_len = len(int_vars1)
+    old_real_len = len(real_vars1)
 
     # Extend the two original vectors
     int_vars1 += v1_bridge_int_vars + v2_bridge_int_vars
@@ -291,12 +292,14 @@ def mixed_elimination(phi: ExtendedFNode):
     x_real_fin = fresh_real_vector("x_rp_{}%s", orig_real_len+num_impure+num_impure_ineqs)
 
     finite_int_bridge_substitution = {decomp.int_bridge_var: x_int_fin[orig_int_len+i] for i, decomp in enumerate(decomposition_mapping.values())}
-    finite_real_bridge_substitution = {decomp.real_bridge_var: x_int_fin[orig_int_len+i] for i, decomp in enumerate(decomposition_mapping.values())}
-    finite_R_substitution = {
-        decomp.real_dummy: x_real_fin[orig_real_len+num_impure_ineqs+i]
-        for i, decomp in enumerate(decomposition_mapping.values())
-        if isinstance(decomp, StrictInequalityDecomposition)
-    }
+    finite_real_bridge_substitution = {decomp.real_bridge_var: x_real_fin[orig_real_len+i] for i, decomp in enumerate(decomposition_mapping.values())}
+
+    finite_R_substitution = {}
+    r_idx = 0
+    for decomp in decomposition_mapping.values():
+        if isinstance(decomp, StrictInequalityDecomposition):
+            finite_R_substitution[decomp.real_dummy] = x_real_fin[orig_real_len + num_impure + r_idx]
+            r_idx += 1
 
     # Profiles
     ## Int
@@ -338,7 +341,7 @@ def mixed_elimination(phi: ExtendedFNode):
 
     for real_atom in set(real).intersection(ineqs):
         rho, sigma = FreshSymbol(typ.REAL, "rho_%s"), FreshSymbol(typ.REAL, "sigma_%s")
-        t_rho, t_sigma = FreshSymbol(typ.REAL, "trho_%s"), FreshSymbol(typ.REAL, "p_%s")
+        t_rho, t_sigma = FreshSymbol(typ.REAL, "trho_%s"), FreshSymbol(typ.REAL, "tsigma_%s")
         rhos.append(rho); sigmas.append(sigma); t_rhos.append(t_rho); t_sigmas.append(t_sigma)
 
         real_infinite_atom = eliminate_inequality_atom_real(
@@ -370,7 +373,7 @@ def mixed_elimination(phi: ExtendedFNode):
     finite_real = Implies(Equals(selector, Int(0)), And(real_finite))
     finite_int = Implies(Equals(selector, Int(1)), And(int_finite))
 
-    a = And(infinite_real, infinite_int, finite_real, finite_int)
+    clique_parts = And(infinite_real, infinite_int, finite_real, finite_int)
 
     int_finite_bridge = []
     real_finite_bridge = []
@@ -397,7 +400,7 @@ def mixed_elimination(phi: ExtendedFNode):
             w2_d0=d[old_real_len+num_impure+i]
         ))
 
-    b = And(
+    bridge_parts = And(
         Implies(Equals(selector, Int(0)), And(real_finite_bridge)),
         Implies(Equals(selector, Int(1)), And(int_finite_bridge)),
         Implies(Equals(selector, Int(2)), And(mixed_bridge)),
@@ -405,10 +408,7 @@ def mixed_elimination(phi: ExtendedFNode):
     
     #FIXME: Restricitions are missing
 
-    return Exists(
-        [selector, qs,
-         x_int_fin, x_real_fin,
-         a0, a, omegas, ps,
-         d, dc, dinf, rhos, sigmas, t_rhos, t_sigmas], 
-        And(skel, a, b)
+    symbols = [selector] + qs + x_int_fin + x_real_fin+a0+ a+ omegas+ ps+d+ dc+ dinf+ rhos+ sigmas+ t_rhos+ t_sigmas
+    return Exists(symbols,
+        And(skel, clique_parts, bridge_parts)
     )
