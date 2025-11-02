@@ -1,12 +1,12 @@
-from typing import Mapping, Tuple, Set, Union
+from typing import Callable, Mapping, Tuple, Set, Union
+from warnings import warn_explicit
 
-from pysmt.operators import EQUALS, NOT
-import pysmt.operators as operators
-from pysmt.shortcuts import FALSE, GT, TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus
+import pysmt.operators as op
+from pysmt.shortcuts import FALSE, GT, LE, TRUE, And, Equals, ForAll, Or, LT, Exists, Not, Int, Plus
 
 from ramsey_extensions.fnode import ExtendedFNode
 
-from ramsey_elimination.formula_utils import contains_mod, create_node
+from ramsey_elimination.formula_utils import contains_mod, create_node, is_atom
 
 type SumOfTerms = Mapping[ExtendedFNode, Union[int, float]]
 type Numeric = Union[int, float]
@@ -66,119 +66,93 @@ def arithmetic_solver(
 
     return new_left, new_right, const
 
-def _make_input_format_logic(node: ExtendedFNode, is_int: bool) -> ExtendedFNode:
+# ---- Atom rewrite strategies ----
+def integer_atom_rewrite(node: ExtendedFNode) -> ExtendedFNode:
+    t = node.node_type()
+    if t == op.LE:
+        lhs, rhs = node.args()
+        return LT(lhs, Plus(rhs, Int(1)))
+    return node
+
+
+def identity_atom_rewrite(node: ExtendedFNode) -> ExtendedFNode:
+    return node
+
+
+def make_input_format(
+    node: ExtendedFNode,
+    atom_rewrite: Callable[[ExtendedFNode], ExtendedFNode]
+) -> ExtendedFNode:
     """
-    Pushes negations down to atoms and rewrites relations based on
-    integer or real semantics.
-
-    Args:
-        node: The formula node to process.
-
-    Returns:
-        The transformed formula node.
+    Single-pass recursion: push negations and apply atom rewrite.
     """
-    # A direct recursive call is cleaner and captures the `is_int` context.
-    def recurse(n):
-        return _make_input_format_logic(n, is_int)
+    def rec(n: ExtendedFNode, negated: bool = False) -> ExtendedFNode:
+        t = n.node_type()
 
-    typ = node.node_type()
+        # --- Handle boolean constants directly ---
+        if t == op.BOOL_CONSTANT:
+            return FALSE() if (negated ^ n.is_true()) else TRUE()
 
-    match typ:
-        # 1. Top-level atom transformations (logic differs for int/real)
-        case operators.LE if is_int:
-            # For integers: x <= y  =>  x < y + 1
-            lhs, rhs = node.args()
-            return LT(lhs, Plus(rhs, Int(1)))
+        # --- Negation pushdown: flip the flag ---
+        if t == op.NOT:
+            return rec(n.arg(0), not negated)
 
-        case typ if typ in (operators.LT, operators.LE, EQUALS):
-            # For reals, LE/LT/EQUALS are kept as is.
-            # For integers, LT/EQUALS are also kept as is.
-            return node
+        # --- Connectives ---
+        if t in (op.AND, op.OR):
+            ctor = Or if (t == op.AND) and negated else And
+            return ctor([rec(c, False) for c in n.args()])
 
-        # 2. Push negations inward
-        case operators.NOT:
-            sub = node.arg(0)
-            t = sub.node_type()
+        if t == op.IMPLIES:
+            a, b = n.args()
+            # a => b = ~a or b
+            return rec(Or(Not(a), b), negated)
 
-            match t:
-                # --- De Morgan's laws and other logical equivalences ---
-                case operators.NOT:
-                    return recurse(sub.arg(0))
-                case operators.AND:
-                    return Or([recurse(Not(c)) for c in sub.args()])
-                case operators.OR:
-                    return And([recurse(Not(c)) for c in sub.args()])
-                case operators.IMPLIES:
-                    a, b = sub.args()
-                    return And(recurse(a), recurse(Not(b)))
-                case operators.IFF:
-                    a, b = sub.args()
-                    return And(
-                        Or(recurse(Not(a)), recurse(Not(b))),
-                        Or(recurse(a), recurse(b))
-                    )
-                case operators.FORALL:
-                    return Exists(sub.quantifier_vars(), recurse(Not(sub.arg(0))))
-                case operators.EXISTS:
-                    return ForAll(sub.quantifier_vars(), recurse(Not(sub.arg(0))))
+        if t == op.IFF:
+            a, b = n.args()
+            # a <=> b = (a => b) & (b => a)
+            return rec(And(Or(Not(a), b), Or(Not(b), a)), negated)
 
-                # --- Negated atoms (logic differs for int/real) ---
-                case operators.LE:
-                    # ~(x <= y) => x > y => y < x
-                    lhs, rhs = sub.args()
-                    return LT(rhs, lhs)
-                case operators.LT:
-                    # ~(x < y) => x >= y => y <= x
-                    lhs, rhs = sub.args()
-                    if is_int:
-                        # For integers: y <= x  =>  y < x + 1
-                        return LT(rhs, Plus(lhs, Int(1)))
-                    else:
-                        # !(x < y) => x >= y => x > y \/ x = y
-                        return Or(LT(rhs, lhs), Equals(lhs, rhs))
-                case operators.EQUALS:
-                    lhs, rhs = sub.args()
-                    if contains_mod(lhs) or contains_mod(rhs):
-                        return Not(sub)
-                    else:
-                        # ~(x = y) => x < y or y < x
-                        return Or(LT(lhs, rhs), GT(lhs, rhs))
-                case operators.SYMBOL:
-                    return Not(sub)
-                case operators.BOOL_CONSTANT:
-                    return FALSE() if sub.is_true() else TRUE()
-                case _:
-                    print(f"Fall through case {node}")
-                    return create_node(NOT, recurse(sub), node._content.payload)
+        if t == op.FORALL:
+            return Exists(n.quantifier_vars(), rec(n.arg(0), negated))
+        if t == op.EXISTS:
+            return ForAll(n.quantifier_vars(), rec(n.arg(0), negated))
 
-        # 3. Top-level logical connective transformations
-        case operators.IMPLIES:
-            # a => b  =>  ~a or b
-            return Or(recurse(Not(node.arg(0))), recurse(node.arg(1)))
+        # --- Atomic formulas ---
+        if is_atom(t):
+            n_new = n
+            if negated:
+                # Apply negation to atom
+                lhs, rhs = (n.args() + (None,))[:2]
+                match t:
+                    case op.LE:
+                        n_new = LT(rhs, lhs)
+                    case op.LT:
+                        n_new = LE(rhs, lhs)
+                    case op.EQUALS:
+                        if contains_mod(lhs) or contains_mod(rhs):
+                            n_new = Not(n)
+                        else:
+                            n_new = Or(LT(lhs, rhs), GT(lhs, rhs))
+                    case op.SYMBOL:
+                        n_new = Not(n)
+            return atom_rewrite(n_new)
 
-        case operators.IFF:
-            # a <=> b  =>  (~a or b) and (~b or a)
-            a, b = node.args()
-            return And(
-                Or(recurse(Not(a)), recurse(b)),
-                Or(recurse(Not(b)), recurse(a))
-            )
-        # 4. Default case: recurse on children
-        case _:
-            return create_node(typ, tuple([recurse(c) for c in node.args()]), node._content.payload)
+        # --- Recurse for other composite nodes ---
+        from logging import warning
+        warning(f"Unknown node type when walking tree: {n}")
+        rewritten_children = tuple(rec(c, False) for c in n.args())
+        return create_node(t, rewritten_children, n._content.payload)
+
+    return rec(node)
 
 
+# ---- Convenience wrappers ----
 def make_int_input_format(node: ExtendedFNode) -> ExtendedFNode:
-    """
-    Push negations down to atoms for integer arithmetic.
-    Rewrite integer <= into < with +1.
-    """
-    return _make_input_format_logic(node, is_int=True)
+    return make_input_format(node, integer_atom_rewrite)
 
 
 def make_real_input_format(node: ExtendedFNode) -> ExtendedFNode:
-    """
-    Push negations down to atoms for real arithmetic.
-    """
-    return _make_input_format_logic(node, is_int=False)
+    return make_input_format(node, identity_atom_rewrite)
 
+def make_mixed_input_format(node: ExtendedFNode) -> ExtendedFNode:
+    return make_input_format(node, identity_atom_rewrite)
