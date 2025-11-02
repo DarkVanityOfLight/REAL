@@ -345,7 +345,7 @@ def mixed_elimination(phi: ExtendedFNode):
         rhos.append(rho); sigmas.append(sigma); t_rhos.append(t_rho); t_sigmas.append(t_sigma)
 
         real_infinite_atom = eliminate_inequality_atom_real(
-            real_atom.substitute({**int_bridge_replace_map, **R_replace_map}), int_vars1, int_vars2, d, dc, dinf, rho, sigma, t_rho, t_sigma)
+            real_atom.substitute({**int_bridge_replace_map, **R_replace_map}), real_vars1, real_vars2, d, dc, dinf, rho, sigma, t_rho, t_sigma)
         real_finite_atom = real_atom.substitute({
             **dict(zip(real_vars1, x_real_fin)),
             **dict(zip(real_vars2, x_real_fin)),
@@ -408,7 +408,8 @@ def mixed_elimination(phi: ExtendedFNode):
     
     #FIXME: Restricitions are missing
 
-    symbols = [selector] + qs + x_int_fin + x_real_fin+a0+ a+ omegas+ ps+d+ dc+ dinf+ rhos+ sigmas+ t_rhos+ t_sigmas
+    symbols = [selector, *qs, *x_int_fin, *x_real_fin, *a0, *a, *omegas, *ps,
+            *d, *dc, *dinf, *rhos, *sigmas, *t_rhos, *t_sigmas]
     return Exists(symbols,
         And(skel, clique_parts, bridge_parts)
     )
