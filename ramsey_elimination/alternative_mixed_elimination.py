@@ -122,10 +122,10 @@ def decompose_equality(phi: ExtendedFNode) -> EqualityDecomposition:
     C_i = floor(C)
     C_r = C - C_i
     real_part = Equals(reconstruct_from_coeff_map(real_terms, 0, Real),
-                       Plus(real_bridge, C_r))
+                       Plus(real_bridge, Real(C_r)))
     int_part = Equals(
         Plus(reconstruct_from_coeff_map(int_terms, 0, Int), int_bridge),
-        C_i
+        Int(C_i)
     )
 
     bridge = Equals(real_bridge, ToReal(int_bridge))
@@ -152,8 +152,8 @@ def decompose_inequality(phi: ExtendedFNode) -> StrictInequalityDecomposition:
     dummy_restriction: Tuple[ExtendedFNode, ExtendedFNode] = (LE(Real(0), real_dummy), LT(real_dummy, Real(1)))
     int_reconstructed: ExtendedFNode = Plus(reconstruct_from_coeff_map(int_terms, 0, Int), int_bridge)
     
-    int_ineq = LT(int_reconstructed, C_i)
-    real_ineq = And(Equals(int_reconstructed, C_i), LT(real_dummy, C_r))
+    int_ineq = LT(int_reconstructed, Int(C_i))
+    real_ineq = And(Equals(int_reconstructed, Int(C_i)), LT(real_dummy, Real(C_r)))
     bridge: ExtendedFNode = Equals(real_bridge, ToReal(int_bridge))
 
     return StrictInequalityDecomposition(
