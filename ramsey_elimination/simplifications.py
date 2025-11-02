@@ -78,6 +78,11 @@ def integer_atom_rewrite(node: ExtendedFNode) -> ExtendedFNode:
 def identity_atom_rewrite(node: ExtendedFNode) -> ExtendedFNode:
     return node
 
+def mixed_atom_rewrite(node: ExtendedFNode) -> ExtendedFNode:
+    if node.is_le():
+        return Or(Equals(node.arg(0), node.arg(1)), LT(node.arg(0), node.arg(1)))
+    return node
+
 
 def make_input_format(
     node: ExtendedFNode,
@@ -99,8 +104,12 @@ def make_input_format(
 
         # --- Connectives ---
         if t in (op.AND, op.OR):
-            ctor = Or if (t == op.AND) and negated else And
-            return ctor([rec(c, False) for c in n.args()])
+            if negated:
+                # Apply De Morgan
+                ctor = Or if t == op.OR else And
+            else:
+                ctor = And if t == op.AND else Or
+            return ctor([rec(c, negated) for c in n.args()])
 
         if t == op.IMPLIES:
             a, b = n.args()
@@ -113,12 +122,18 @@ def make_input_format(
             return rec(And(Or(Not(a), b), Or(Not(b), a)), negated)
 
         if t == op.FORALL:
-            return Exists(n.quantifier_vars(), rec(n.arg(0), negated))
+            if negated:
+                return Exists(n.quantifier_vars(), rec(n.arg(0), True))
+            else:
+                return ForAll(n.quantifier_vars(), rec(n.arg(0), False))
         if t == op.EXISTS:
-            return ForAll(n.quantifier_vars(), rec(n.arg(0), negated))
+            if negated:
+                return ForAll(n.quantifier_vars(), rec(n.arg(0), True))
+            else:
+                return Exists(n.quantifier_vars(), rec(n.arg(0), False))
 
         # --- Atomic formulas ---
-        if is_atom(t):
+        if is_atom(n):
             n_new = n
             if negated:
                 # Apply negation to atom
@@ -155,4 +170,4 @@ def make_real_input_format(node: ExtendedFNode) -> ExtendedFNode:
     return make_input_format(node, identity_atom_rewrite)
 
 def make_mixed_input_format(node: ExtendedFNode) -> ExtendedFNode:
-    return make_input_format(node, identity_atom_rewrite)
+    return make_input_format(node, mixed_atom_rewrite)

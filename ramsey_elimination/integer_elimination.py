@@ -1,6 +1,6 @@
 from typing import Dict, Tuple, cast
 
-from pysmt.shortcuts import LE, LT, GT, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, Times
+from pysmt.shortcuts import LE, LT, GT, GE, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, Times
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import Mod, Ramsey
@@ -13,7 +13,9 @@ from ramsey_elimination.existential_elimination import eliminate_existential_qua
 FNode = ExtendedFNode # type: ignore[misc]
 
 
-def eliminate_inequality_atom_int(ineq: ExtendedFNode, vars1, vars2, omega, p, x, x0):
+def eliminate_inequality_atom_int(ineq: ExtendedFNode, vars1, vars2,
+                                  omega: Tuple[ExtendedFNode, ExtendedFNode],
+                                  p: Tuple[ExtendedFNode, ExtendedFNode], x, x0) -> ExtendedFNode:
     assert ineq.is_lt()
     left, right = ineq.arg(0), ineq.arg(1)
 
@@ -102,17 +104,6 @@ def eliminate_eq_atom_int(eq: ExtendedFNode, vars1, vars2, x, x0):
         Equals(left_x0, right_x0)
     )
 
-def eliminate_atom_int(atom: ExtendedFNode, vars1, vars2, omega, p, x, x0):
-    if atom.is_lt():
-        return eliminate_inequality_atom_int(atom, vars1, vars2, omega, p, x, x0)
-    elif atom.is_equals() or (atom.is_not() and atom.arg(0).is_equals()):
-        if contains_mod(atom):
-            return eliminate_mod_eq_atom_int(atom, vars1, vars2, x, x0)
-        else:
-            return eliminate_eq_atom_int(atom, vars1, vars2, x, x0)
-    else:
-        raise ValueError(f"Unknown atom type: {atom}")
-
 def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     """
     Modular elimination of (ramsey x y phi) quantifier.
@@ -149,11 +140,11 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
     gamma = []
     for i, atom in enumerate(atoms):
         if atom in ineqs:
-            omega_i = omega[2*i:2*i+2]
-            p_i = p[2*i:2*i+2]
+            omega_i = cast(Tuple[ExtendedFNode, ExtendedFNode], tuple(omega[2*i:2*i+2]))
+            p_i = cast(Tuple[ExtendedFNode, ExtendedFNode], p[2*i:2*i+2])
             gamma.append(eliminate_inequality_atom_int(atom, vars1, vars2, omega_i, p_i, x, x0))
         else:
-            gamma.append(eliminate_atom_int(atom, vars1, vars2, omega, p, x, x0))  # mod or eq
+            gamma.append(eliminate_eq_atom_int(atom, vars1, vars2, x, x0))  # mod or eq
 
     # --- Guarded constraints ---
     guarded_gamma = And([Or(Not(qs[i]), gamma[i]) for i in range(len(atoms))])

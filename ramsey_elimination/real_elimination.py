@@ -94,7 +94,7 @@ def eliminate_inequality_atom_real(
 def eliminate_equality_atom_real(
     eq: ExtendedFNode,
     vars1, vars2,
-    x_c, x_inf
+    x, x_c, x_inf
 ) -> ExtendedFNode:
     assert eq.is_equals()
     left, right = eq.arg(0), eq.arg(1)
@@ -111,7 +111,7 @@ def eliminate_equality_atom_real(
 
     wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
     u_minus_v_x_coeffs = {
-        dict(zip(vars1, x_c)).get(v1, v1): l_coeffs.get(v1, 0) - v_coeffs.get(v2, 0)
+        dict(zip(vars1, x)).get(v1, v1): l_coeffs.get(v1, 0) - v_coeffs.get(v2, 0)
         for v1, v2 in zip(vars1, vars2)
     }
 
@@ -162,7 +162,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
 
     for j, eq in enumerate(eqs):
         gamma.append(
-            Implies(qs[n + j], eliminate_equality_atom_real(eq, vars1, vars2, x_c, x_inf))
+            Implies(qs[n + j], eliminate_equality_atom_real(eq, vars1, vars2,x, x_c, x_inf))
         )
 
     non_trivial_xc = Or([Not(Equals(xc_i, Real(0))) for xc_i in x_c])
