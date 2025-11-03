@@ -758,7 +758,7 @@ def full_mixed_ramsey_elimination(quantified_formula: ExtendedFNode) -> Extended
     next = requantified
     # Step 5: Eliminate existential quantifiers
     if quantified_formula.arg(0).is_exists():
-        next = eliminate_existential_quantifier(requantified)
+        next, _ = eliminate_existential_quantifier(requantified)
         print(f"Existential eliminated: {next.size()}")
     
     # Step 6: Apply mixed Ramsey elimination
@@ -769,6 +769,6 @@ def eliminate_mixed_ramsey_from_separated(quantified_formula: ExtendedFNode) -> 
     Eliminates mixed existential and Ramsey quantifiers from a formula
     that is already type-separated.
     """
-    next_formula = (eliminate_existential_quantifier(quantified_formula)
+    next_formula, _ = (eliminate_existential_quantifier(quantified_formula)
                     if quantified_formula.arg(0).is_exists() else quantified_formula)
     return eliminate_ramsey_mixed(next_formula)

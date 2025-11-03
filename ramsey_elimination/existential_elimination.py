@@ -12,7 +12,7 @@ def _create_quantifier_elimination_vars(
     var_type: Union[typ._IntType, typ._RealType],
 ) -> Tuple[
     Dict[ExtendedFNode, ExtendedFNode],
-    Dict[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]],
+    Dict[ExtendedFNode, Tuple[Tuple[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ExtendedFNode]]],
     Tuple[ExtendedFNode, ...],
     Tuple[ExtendedFNode, ...],
     Tuple[ExtendedFNode, ...],
@@ -36,12 +36,14 @@ def _create_quantifier_elimination_vars(
     w2 = _fresh_vector("w2_%s", n, var_type)
 
     subs = {ex_vars[i]: Plus(v1[i], w2[i]) for i in range(n)}  # substitution
-    mapping = {ex_vars[i]: (v1[i], w2[i]) for i in range(n)}   # structural mapping
+    mapping = {ex_vars[i]: ((v1[i], v2[i]), (w1[i], w2[i])) for i in range(n)}   # structural mapping
 
     return subs, mapping, tuple(v1), tuple(v2), tuple(w1), tuple(w2)
 
 
-def eliminate_existential_quantifier(formula: ExtendedFNode) -> Tuple[ExtendedFNode, Dict[ExtendedFNode, Tuple[ExtendedFNode, ExtendedFNode]]]:
+def eliminate_existential_quantifier(formula: ExtendedFNode) -> Tuple[ExtendedFNode,
+    Dict[ExtendedFNode, Tuple[Tuple[ExtendedFNode, ExtendedFNode], Tuple[ExtendedFNode, ExtendedFNode]]]]:
+
     """
     Unified elimination of existential quantifiers inside a Ramsey formula.
 
