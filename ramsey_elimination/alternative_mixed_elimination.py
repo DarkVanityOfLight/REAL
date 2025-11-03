@@ -3,8 +3,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, cast
 
 from pysmt.exceptions import PysmtTypeError
-from pysmt.shortcuts import And, LE, LT, Equals, Exists, FreshSymbol, Implies, Int, Not, Or, Plus, Real, Symbol, ToReal
+from pysmt.shortcuts import And, LE, LT, Equals, Exists, FreshSymbol, Implies, Int, Not, NotEquals, Or, Plus, Real, Symbol, ToReal
 
+from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import ast_to_terms, bool_vector, collect_atoms, fresh_bool_vector, fresh_int_vector, fresh_real_vector, map_atoms, reconstruct_from_coeff_map
 from ramsey_elimination.integer_elimination import eliminate_eq_atom_int, eliminate_inequality_atom_int
 from ramsey_elimination.real_elimination import eliminate_equality_atom_real, eliminate_inequality_atom_real
@@ -13,6 +14,8 @@ from ramsey_extensions.fnode import ExtendedFNode
 import pysmt.typing as typ
 
 from math import floor
+
+from ramsey_extensions.shortcuts import Ramsey
 
 
 #TODO: ToInt operations
@@ -179,237 +182,182 @@ def mixed_elimination(phi: ExtendedFNode):
     assert phi.is_ramsey()
 
     vars1, vars2 = phi.quantifier_vars()
-    real_vars1, real_vars2 = [var for var in vars1 if var.symbol_type() == typ.REAL], [var for var in vars2 if var.symbol_type() == typ.REAL]
-    int_vars1, int_vars2 = [var for var in vars1 if var.symbol_type() == typ.INT], [var for var in vars2 if var.symbol_type() == typ.INT]
-
-    orig_real_len = len(real_vars1)
-    orig_int_len = len(int_vars1)
-
-
     phi_p = make_mixed_input_format(phi.arg(0))
 
-    eqs, _, ineqs = collect_atoms(phi_p)
-
-    pure_atoms: List[ExtendedFNode] = []
-    # atom |-> decomposition
-    decomposition_mapping: Dict[ExtendedFNode, Decomposition] = {}
-    num_impure = 0
-    num_impure_ineqs = 0
-    for eq in eqs:
-        if len({v.get_type() for v in eq.get_free_variables()}) > 1:
-            decomp = decompose_equality(eq)
-            decomposition_mapping[eq] = decomp
-            num_impure += 1
-        else:
-            pure_atoms.append(eq)
-
-    for ineq in ineqs:       
-        if len({v.get_type() for v in ineq.get_free_variables()}) > 1:
-            decomp = decompose_inequality(ineq)
-            decomposition_mapping[ineq] = decomp
-            num_impure += 1
-            num_impure_ineqs += 1
-        else:
-            pure_atoms.append(ineq)
-
-    def replace_with_decomp(atom) -> ExtendedFNode:
-        if atom in decomposition_mapping:
-            if isinstance(decomposition_mapping[atom], EqualityDecomposition):
-                return decomposition_mapping[atom].pure_atoms
-            elif isinstance(decomposition_mapping[atom], StrictInequalityDecomposition):
-                return decomposition_mapping[atom].pure_atoms
+    new_vars = []
+    def eliminator(atom: ExtendedFNode):
+        if len({v.get_type() for v in atom.get_free_variables()}) > 1:
+            if atom.is_equals():
+                eq_result: EqualityDecomposition = decompose_equality(atom)
+                new_vars.extend((eq_result.real_bridge_var, eq_result.int_bridge_var))
+                return And(eq_result.pure_atoms, eq_result.bridge_atom)
+            elif atom.is_lt():
+                ineq_result: StrictInequalityDecomposition = decompose_inequality(atom)
+                new_vars.extend((ineq_result.real_bridge_var, ineq_result.int_bridge_var, ineq_result.real_dummy))
+                return And(ineq_result.pure_atoms, ineq_result.bridge)
             else:
-                raise Exception("Unreachable")
+                raise Exception(f"Unreachable unknown atom type in mixed elimination {atom}")
         else:
             return atom
 
-    phi_pp = map_atoms(phi_p, replace_with_decomp)
+    phi_pp = map_atoms(phi_p, eliminator)
 
-    eqs, _, ineqs = collect_atoms(phi_pp)
-    n = len(eqs) + len(ineqs)
-    qs = fresh_bool_vector("q_{}%s", n)
-    q_mapping = {atom: qs[i] for i, atom in enumerate(eqs + ineqs) }
-    skel = phi_p.substitute(q_mapping)
+    phi_ppp, mapping = eliminate_existential_quantifier(Ramsey(vars1, vars2, Exists(new_vars, phi_pp)))
 
-    intt, real, mixed = [], [], []
+    new_vars1, new_vars2 = phi_ppp.quantifier_vars()
+    real_vars1, real_vars2 = [var for var in new_vars1 if var.symbol_type() == typ.REAL], [var for var in new_vars2 if var.symbol_type() == typ.REAL]
+    int_vars1, int_vars2 = [var for var in new_vars1 if var.symbol_type() == typ.INT], [var for var in new_vars2 if var.symbol_type() == typ.INT]
 
-    for atom in eqs + ineqs:
-        types = {v.get_type() for v in atom.get_free_variables()}
+    eqs, _, ineqs = collect_atoms(phi_ppp)
 
+    real_eqs = []
+    int_eqs = []
+    bridge_eqs: List[ExtendedFNode] = []
+    for eq in eqs:
+        types = {v.get_type() for v in eq.get_free_variables()}
         if len(types) > 1:
-            mixed.append(atom)
+            bridge_eqs.append(eq)
         elif typ.INT in types:
-            intt.append(atom)
+            int_eqs.append(eq)
+        elif typ.REAL in types:
+            real_eqs.append(eq)
         else:
-            real.append(atom)
+            raise Exception(f"Unknown type in atom {eq}")
 
-    # Extend original var vectors
-    v1_bridge_int_vars = fresh_int_vector("v1_bridge_{}%s", num_impure)
-    v2_bridge_int_vars = fresh_int_vector("v2_bridge_{}%s", num_impure)
-    w1_bridge_int_vars = fresh_int_vector("w1_bridge_{}%s", num_impure)
-    w2_bridge_int_vars = fresh_int_vector("w2_bridge_{}%s", num_impure)
+    int_ineqs = []
+    real_ineqs = []
+    for ineq in ineqs:
+        types = {v.get_type() for v in ineq.get_free_variables()}
+        if len(types) > 1:
+            raise Exception(f"Unknown types in atom {ineq}")
+        elif typ.INT in types:
+            int_ineqs.append(ineq)
+        elif typ.REAL in types:
+            real_ineqs.append(ineq)
+        else:
+            raise Exception(f"Unknown type in atom {ineq}")
 
-    v1_bridge_real_vars = fresh_real_vector("v1_bridge_{}%s", num_impure)
-    v2_bridge_real_vars = fresh_real_vector("v2_bridge_{}%s", num_impure)
-    w1_bridge_real_vars = fresh_real_vector("w1_bridge_{}%s", num_impure)
-    w2_bridge_real_vars = fresh_real_vector("w2_bridge_{}%s", num_impure)
-
-    int_bridge_replace_map = { decomp.int_bridge_var: Plus(v1_bridge_int_vars[i], w2_bridge_int_vars[i]) for i, decomp in enumerate(decomposition_mapping.values()) }
-    real_bridge_replace_map = { decomp.real_bridge_var: Plus(v1_bridge_real_vars[i], w2_bridge_real_vars[i]) for i, decomp in enumerate(decomposition_mapping.values()) }
-
-    v1_R = fresh_real_vector("v1_R_{}%s", num_impure_ineqs)
-    v2_R = fresh_real_vector("v2_R_{}%s", num_impure_ineqs)
-    w1_R = fresh_real_vector("w1_R_{}%s", num_impure_ineqs)
-    w2_R = fresh_real_vector("w2_R_{}%s", num_impure_ineqs)
-    
-    R_replace_map = {}
-    idx = 0
-    for decomp in decomposition_mapping.values():
-        if isinstance(decomp, StrictInequalityDecomposition):
-            R_replace_map[decomp.real_dummy] = Plus(v1_R[idx], w1_R[idx])
-            idx += 1
-
-    old_int_len = len(int_vars1)
-    old_real_len = len(real_vars1)
-
-    # Extend the two original vectors
-    int_vars1 += v1_bridge_int_vars + v2_bridge_int_vars
-    int_vars2 += w1_bridge_int_vars + w2_bridge_int_vars
-    real_vars1 += v1_bridge_real_vars + v2_bridge_real_vars + v1_R + v2_R
-    real_vars2 += w1_bridge_real_vars + w2_bridge_real_vars + w1_R + w2_R
-
-    # These vectors must align with the EXTENDED int_vars and real_vars vectors
-    # First the moving cliques
-    a = fresh_int_vector("a_{}%s", len(int_vars1))
-    a0 = fresh_int_vector("a0_{}%s", len(int_vars1))
-    
-    d = fresh_real_vector("d_{}%s", len(real_vars1))
-    dc = fresh_real_vector("dc_{}%s", len(real_vars1))
-    dinf = fresh_real_vector("dinf_{}%s", len(real_vars1))
-
-    # Next the static cliques
-    x_int_fin = fresh_int_vector("x_ip_{}%s", orig_int_len+num_impure)
-    x_real_fin = fresh_real_vector("x_rp_{}%s", orig_real_len+num_impure+num_impure_ineqs)
-
-    finite_int_bridge_substitution = {decomp.int_bridge_var: x_int_fin[orig_int_len+i] for i, decomp in enumerate(decomposition_mapping.values())}
-    finite_real_bridge_substitution = {decomp.real_bridge_var: x_real_fin[orig_real_len+i] for i, decomp in enumerate(decomposition_mapping.values())}
-
-    finite_R_substitution = {}
-    r_idx = 0
-    for decomp in decomposition_mapping.values():
-        if isinstance(decomp, StrictInequalityDecomposition):
-            finite_R_substitution[decomp.real_dummy] = x_real_fin[orig_real_len + num_impure + r_idx]
-            r_idx += 1
-
-    # Profiles
-    ## Int
-    omegas = []
-    ps = []
-
-    ## Real
-    rhos, sigmas, t_rhos, t_sigmas = [], [], [], []
-
-    int_finite = []
-    int_infinite = []
-    for int_atom in set(intt).intersection(ineqs):
-        omega1, omega2 = FreshSymbol(typ.BOOL, "o_%s"), FreshSymbol(typ.BOOL, "o_%s")
-        p1, p2 = FreshSymbol(typ.BOOL, "p_%s"), FreshSymbol(typ.BOOL, "p_%s")
-        ps.append(p1); ps.append(p2); omegas.append(omega1); omegas.append(omega2)
-        
-        int_infinite_atom = eliminate_inequality_atom_int(int_atom.substitute(int_bridge_replace_map), int_vars1, int_vars2, (omega1, omega2), (p1, p2), a, a0)
-        int_finite_atom = int_atom.substitute({
-            **dict(zip(int_vars1, x_int_fin)),
-            **dict(zip(int_vars2, x_int_fin)),
-        })
-
-        int_finite.append(Implies(q_mapping[int_atom], int_finite_atom))
-        int_infinite.append(Implies(q_mapping[int_atom], int_infinite_atom))
+    qs = fresh_bool_vector("q_{}_%s", len(eqs) + len(ineqs))
+    q_mapping = {atom: qs[i] for i, atom in enumerate(eqs + ineqs) }
+    skel = phi_ppp.substitute(q_mapping)
 
 
-    real_finite = []
-    real_infinite = []
-    for int_atom in set(intt).intersection(eqs):
-        int_infinite_atom = eliminate_eq_atom_int(int_atom.substitute(int_bridge_replace_map), int_vars1, int_vars2, a, a0)
-        int_finite_atom = int_atom.substitute({
-            **dict(zip(int_vars1, x_int_fin)),
-            **dict(zip(int_vars2, x_int_fin)),
-        })
+    # INT Clique stuff
+    o = len(int_vars1)
+    # --- New symbolic integer vectors ---
+    a0 = fresh_int_vector("a0_{}_%s", o)
+    a  = fresh_int_vector("a_{}_%s", o)
+    a_restriction = Or([NotEquals(a[i], Int(0)) for i in range(o)])  # nontrivial a
 
-        int_finite.append(Implies(q_mapping[int_atom], int_finite_atom))
-        int_infinite.append(Implies(q_mapping[int_atom], int_infinite_atom))
+    # --- Profile variables for int inequalities ---
+    p, omega = fresh_int_vector("p_{}_%s", 2*len(int_ineqs)), fresh_bool_vector("o_{}_%s", 2*len(int_ineqs))
+    int_admissible = And([
+        Or(And(Not(omega[2*i]), LT(p[2*i], p[2*i+1])), omega[2*i+1])
+        for i in range(len(int_ineqs))
+    ])
+
+    def pairwise(seq):
+        return [(seq[2*i], seq[2*i+1]) for i in range(len(seq)//2)]
+
+    ineq_aux = list(zip(ineqs, pairwise(p), pairwise(omega)))
+    ineq_iter = iter(ineq_aux)
+
+    # --- Eliminate each int atom ---
+    phi_delta_p = []
+    for atom in int_eqs + int_ineqs:
+        if atom in ineqs:
+            _, p_i, omega_i = next(ineq_iter)
+            phi_delta_p.append(Implies(q_mapping[atom], eliminate_inequality_atom_int(atom, int_vars1, int_vars2, omega_i, p_i, a, a0)))
+        else:
+            phi_delta_p.append(Implies(q_mapping[atom], eliminate_eq_atom_int(atom, int_vars1, int_vars2, a, a0)))
+
+    theta_i = int_admissible + a_restriction
+
+    # Real clique elimination
+    l, n = len(real_vars1), len(real_ineqs)
+    # Fresh vectors
+    rho, sigma      = fresh_real_vector("rho_{}_%s", n), fresh_real_vector("sigma_{}_%s", n)
+    t_rho, t_sigma  = fresh_real_vector("t_rho_{}_%s", n), fresh_real_vector("t_sigma_{}_%s", n)
+    d, d_c, d_inf   = (fresh_real_vector(prefix, l) for prefix in ("x_{}_%s", "x_c_{}_%s", "x_inf_{}_%s"))
+
+    phi_gamma_p = [
+        Implies(q_mapping[ineq],
+                eliminate_inequality_atom_real(ineq, real_vars1, real_vars2, d, d_c, d_inf,
+                                            rho[i], sigma[i], t_rho[i], t_sigma[i]))
+        for i, ineq in enumerate(real_ineqs)
+    ] + [
+        Implies(q_mapping[eq],
+                eliminate_equality_atom_real(eq, real_vars1, real_vars2, d, d_c, d_inf))
+        for eq in real_eqs
+    ]
+
+    # Non-triviality constraint
+    non_trivial_dc = Or(NotEquals(dc_i, Real(0)) for dc_i in d_c)
+    theta_r = non_trivial_dc
+
+    theta = theta_r + theta_i
+    # Statics
+    x_r = fresh_real_vector("x_r{}%s", len(real_vars1))
+    x_i = fresh_int_vector("x_i{}%s", len(int_vars1))
+    int_constant_mapping = dict(list(zip(int_vars1, x_i)) + list(zip(int_vars2, x_i)))
+    real_constant_mapping = dict(list(zip(real_vars1, x_r)) + list(zip(real_vars2, x_r)))
+
+    phi_delta = And([Implies(q_mapping[atom], atom) for atom in int_ineqs + int_eqs]).substitute(int_constant_mapping)
+    phi_gamma = And([Implies(q_mapping[atom], atom) for atom in real_ineqs + real_eqs]).substitute(real_constant_mapping)
+
+    phi_xi_int_finite = []
+    phi_xi_real_finite = []
+    phi_Xi = []
+    for bridge in bridge_eqs:
+        phi_xi_int_finite.append(Implies(q_mapping[bridge], eliminate_equality_atom_real(bridge, real_vars1, real_vars2, d, d_c, d_inf)))
+        phi_xi_real_finite.append(Implies(q_mapping[bridge], eliminate_eq_atom_int(bridge, int_vars1, int_vars2, a, a0)))
+        vars = tuple(bridge.get_free_variables())
+        v_i, v_r = (vars[0], vars[1]) if vars[0].symbol_type() == typ.INT else (vars[1], vars[0])
 
 
-    for real_atom in set(real).intersection(ineqs):
-        rho, sigma = FreshSymbol(typ.REAL, "rho_%s"), FreshSymbol(typ.REAL, "sigma_%s")
-        t_rho, t_sigma = FreshSymbol(typ.REAL, "trho_%s"), FreshSymbol(typ.REAL, "tsigma_%s")
-        rhos.append(rho); sigmas.append(sigma); t_rhos.append(t_rho); t_sigmas.append(t_sigma)
+        int_mapping = mapping[v_i]  # ((v1_i, v2_i), (w1_i, w2_i))
+        real_mapping = mapping[v_r]  # ((v1_r, v2_r), (w1_r, w2_r))
 
-        real_infinite_atom = eliminate_inequality_atom_real(
-            real_atom.substitute({**int_bridge_replace_map, **R_replace_map}), real_vars1, real_vars2, d, dc, dinf, rho, sigma, t_rho, t_sigma)
-        real_finite_atom = real_atom.substitute({
-            **dict(zip(real_vars1, x_real_fin)),
-            **dict(zip(real_vars2, x_real_fin)),
-        })
+        # Extract individual components from the mapping
+        (v1_i, v2_i), (w1_i, w2_i) = int_mapping
+        (v1_r, v2_r), (w1_r, w2_r) = real_mapping
 
-        real_finite.append(Implies(q_mapping[real_atom], real_finite_atom))
-        real_infinite.append(Implies(q_mapping[real_atom], real_infinite_atom))
+        # Find the positions of v1_i and w2_i in the new integer variable lists
+        idx_v1_i = int_vars1.index(v1_i)
+        idx_w2_i = int_vars2.index(w2_i)
 
-    for real_atom in set(real).intersection(eqs):
-        real_infinite_atom = eliminate_equality_atom_real(
-            real_atom.substitute(real_bridge_replace_map), real_vars1, real_vars2, d, dc, dinf)
-        real_finite_atom = real_atom.substitute({
-            **dict(zip(real_vars1, x_real_fin)),
-            **dict(zip(real_vars2, x_real_fin)),
-        })
+        # Find the positions of v1_r and w2_r in the new real variable lists
+        idx_v1_r = real_vars1.index(v1_r)
+        idx_w2_r = real_vars2.index(w2_r)
 
-        real_finite.append(Implies(q_mapping[real_atom], real_finite_atom))
-        real_infinite.append(Implies(q_mapping[real_atom], real_infinite_atom))
-
-    selector = FreshSymbol(typ.INT, "s%s")
-
-    infinite_real = Implies(Not(Equals(selector, Int(0))), And(real_infinite))
-    infinite_int = Implies(Not(Equals(selector, Int(1))), And(int_infinite))
-
-    finite_real = Implies(Equals(selector, Int(0)), And(real_finite))
-    finite_int = Implies(Equals(selector, Int(1)), And(int_finite))
-
-    clique_parts = And(infinite_real, infinite_int, finite_real, finite_int)
-
-    int_finite_bridge = []
-    real_finite_bridge = []
-    mixed_bridge = []
-    for i, bridge_atom in enumerate(mixed):
-        int_finite_bridge += Implies(q_mapping[bridge_atom],
-            eliminate_equality_atom_real(bridge_atom.substitute(
-                                     real_bridge_replace_map | R_replace_map | finite_int_bridge_substitution),
-                                         real_vars1, real_vars2, d, dc, dinf))
-        real_finite_bridge += Implies(q_mapping[bridge_atom],
-                                      eliminate_eq_atom_int(bridge_atom.substitute(
-                                      int_bridge_replace_map | finite_R_substitution | finite_real_bridge_substitution),
-                                                            int_vars1, int_vars2, a, a0))
-        mixed_bridge += Implies(q_mapping[bridge_atom], eliminate_bridge_atom(
-            v1_dc=dc[old_real_len+i],
-            v2_dc=dc[old_real_len+num_impure+i],
-            v1_a=a[old_int_len+i],
-            w2_a=a[old_int_len+num_impure+i],
-            v1_dinf=dinf[old_real_len+i],
-            w2_dinf=dinf[old_real_len+num_impure+i],
-            v1_a0=a0[old_int_len+i],
-            w2_a0=a0[old_int_len+num_impure+i],
-            v1_d0=d[old_real_len+i],
-            w2_d0=d[old_real_len+num_impure+i]
+        # Now get the corresponding fresh variables
+        phi_Xi.append(eliminate_bridge_atom(
+            v1_dc=d_c[idx_v1_r],      # d_c corresponding to v1_r
+            v2_dc=d_c[idx_w2_r],      # d_c corresponding to w2_r (or v2)
+            v1_a=a[idx_v1_i],         # a corresponding to v1_i
+            v1_dinf=d_inf[idx_v1_r],  # d_inf corresponding to v1_r
+            w2_a=a[idx_w2_i],         # a corresponding to w2_i
+            w2_dinf=d_inf[idx_w2_r],  # d_inf corresponding to w2_r
+            v1_a0=a0[idx_v1_i],       # a0 corresponding to v1_i
+            w2_a0=a0[idx_w2_i],       # a0 corresponding to w2_i
+            v1_d0=d[idx_v1_r],        # d corresponding to v1_r
+            w2_d0=d[idx_w2_r],        # d corresponding to w2_r
         ))
 
-    bridge_parts = And(
-        Implies(Equals(selector, Int(0)), And(real_finite_bridge)),
-        Implies(Equals(selector, Int(1)), And(int_finite_bridge)),
-        Implies(Equals(selector, Int(2)), And(mixed_bridge)),
-    )
-    
-    #FIXME: Restricitions are missing
 
-    symbols = [selector, *qs, *x_int_fin, *x_real_fin, *a0, *a, *omegas, *ps,
-            *d, *dc, *dinf, *rhos, *sigmas, *t_rhos, *t_sigmas]
-    return Exists(symbols,
-        And(skel, clique_parts, bridge_parts)
+
+
+    selector = FreshSymbol(typ.INT, "sel%s")
+    selector_restriction = Or(Equals(selector, Int(i)) for i in [0, 1, 2])
+
+    phi_pppp = And(skel, theta, selector_restriction,
+        Implies(NotEquals(selector, Int(0)), phi_gamma_p),
+        Implies(NotEquals(selector, Int(1)), phi_delta_p),
+        Implies(Equals(selector, Int(0)), phi_gamma),
+        Implies(Equals(selector, Int(1)), phi_delta),
+        Implies(Equals(selector, Int(0)), And(phi_xi_real_finite)),
+        Implies(Equals(selector, Int(1)), And(phi_xi_int_finite)),
+        Implies(Equals(selector, Int(2)), And(phi_Xi)),
     )
+
+    return Exists(qs+x_i+x_r+a+a0+omega+p+d+d_c+d_inf+sigma+rho+t_rho+t_sigma, phi_pppp)
