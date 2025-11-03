@@ -136,15 +136,20 @@ def eliminate_ramsey_int(qformula: ExtendedFNode) -> ExtendedFNode:
         for i in range(len(ineqs))
     ])
 
+    def pairwise(seq):
+        return [(seq[2*i], seq[2*i+1]) for i in range(len(seq)//2)]
+
+    ineq_aux = list(zip(ineqs, pairwise(p), pairwise(omega)))
+    ineq_iter = iter(ineq_aux)
+
     # --- Eliminate each atom ---
     gamma = []
-    for i, atom in enumerate(atoms):
+    for atom in atoms:
         if atom in ineqs:
-            omega_i = cast(Tuple[ExtendedFNode, ExtendedFNode], tuple(omega[2*i:2*i+2]))
-            p_i = cast(Tuple[ExtendedFNode, ExtendedFNode], p[2*i:2*i+2])
+            _, p_i, omega_i = next(ineq_iter)
             gamma.append(eliminate_inequality_atom_int(atom, vars1, vars2, omega_i, p_i, x, x0))
         else:
-            gamma.append(eliminate_eq_atom_int(atom, vars1, vars2, x, x0))  # mod or eq
+            gamma.append(eliminate_eq_atom_int(atom, vars1, vars2, x, x0))
 
     # --- Guarded constraints ---
     guarded_gamma = And([Or(Not(qs[i]), gamma[i]) for i in range(len(atoms))])
@@ -162,7 +167,7 @@ def full_ramsey_elimination_int(formula: ExtendedFNode):
 
     # Handle nested existentials before Ramsey elimination
     if formula.arg(0).is_exists():
-        f = eliminate_existential_quantifier(f)
+        f, _ = eliminate_existential_quantifier(f)
 
     return eliminate_ramsey_int(f)
 

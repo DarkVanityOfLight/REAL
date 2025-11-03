@@ -177,6 +177,6 @@ def full_ramsey_elimination_real(formula: ExtendedFNode):
 
     # Eliminate inner existential quantifiers if present
     if formula.arg(0).is_exists():
-        f = eliminate_existential_quantifier(f)
+        f, _ = eliminate_existential_quantifier(f)
 
     return eliminate_ramsey_real(f)
