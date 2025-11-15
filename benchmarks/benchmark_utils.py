@@ -134,7 +134,7 @@ def get_builtin_configs(dimension: int) -> Dict[str, Dict[str, Any]]:
         'real_benchmarks': {
             'elimination_func': full_ramsey_elimination_real,
             'args': {
-                'benchmark_half_real': [(dimension, 0.0)],
+                'benchmark_half_real': [(dimension, 50)],
                 'benchmark_equal_exists_real': [(dimension,)],
                 'benchmark_equal_free_real': [(dimension,)],
                 'benchmark_dickson_real': [(dimension,)],
