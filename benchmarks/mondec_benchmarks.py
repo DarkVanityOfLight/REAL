@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+from pysmt.environment import pop_env
+
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -101,19 +103,54 @@ def benchmark_add_real(dim: int):
 
     return And(t1, t2)
 
-def benchmark_sanity_lt():
-    x, y = Symbol("x", REAL), Symbol("y", REAL)
-    return And(LT(x, Real(1)), LT(y, Real(2)))
 
-def benchmark_sanity_eq():
-    x, y, z = Symbol("x", REAL), Symbol("y", REAL), Symbol("z", REAL)
-    return And(Equals(x, Real(1)), Equals(y, Real(2)), Equals(z, Real(3)))
 
 if __name__ == "__main__":
-    push_ramsey()
-    with Timer() as t:
-        r = is_mondec(benchmark_add_real(8))
-        # r = is_mondec(benchmark_sanity_lt()) #type: ignore
-        print(r)
-    print(t.interval)
+    import csv
+    import time
 
+    configs = {
+        "imp_int":       [(4,1), (8,2), (16,4), (32,8)],
+        "imp_real":      [(4,1), (8,2), (16,4), (32,8)],
+        "diagonal_int":  [(8,1), (16,3), (32,5), (64,10)],
+        "diagonal_real": [(8,1), (16,3), (32,5), (64,10)],
+        "cubes_int":     [(3,4,False), (4,6,False), (6,8,False), (3,4,True), (4,6,True), (6,8,True)],
+        "cubes_real":    [(3,4,False), (4,6,False), (6,8,False), (3,4,True), (4,6,True), (6,8,True)],
+        # "mixed":         [(4,0,1), (8,0,2), (12,1,3)],
+        "add_real":      [4, 8, 16, 20]
+    }
+
+    benchmarks = {
+        "imp_int": benchmark_imp_int,
+        "imp_real": benchmark_imp_real,
+        "diagonal_int": benchmark_diagonal_int,
+        "diagonal_real": benchmark_diagonal_real,
+        "cubes_int": benchmark_cubes_int,
+        "cubes_real": benchmark_cubes_real,
+        # "mixed": benchmark_mixed,
+        "add_real": benchmark_add_real
+    }
+
+    with open("benchmark_results.csv", "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["benchmark", "config", "monadically_decomposable", "time_seconds"])
+        
+        for name, conf_list in configs.items():
+            pop_env()
+            push_ramsey()
+            func = benchmarks[name]
+            for conf in conf_list:
+                # Construct formula
+                if isinstance(conf, tuple):
+                    f = func(*conf)
+                else:
+                    f = func(conf)
+                
+                # Check monadic decomposability and time it
+                start_time = time.time()
+                mondec = is_mondec(f)
+                elapsed = time.time() - start_time
+                
+                # Write to CSV
+                writer.writerow([name, str(conf), mondec, elapsed])
+                print(f"{name} {conf} -> mondec: {mondec}, time: {elapsed:.4f}s")
