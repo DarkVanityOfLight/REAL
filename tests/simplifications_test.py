@@ -149,7 +149,7 @@ class TestIntInputFormat:
         """Test negated biconditional"""
         A, B = bool_symbols['A'], bool_symbols['B']
         input_formula = Not(Iff(A, B))
-        expected = And(Or(Not(A), Not(B)), Or(A, B))
+        expected = Or(And(A, Not(B)), And(B, Not(A)))
         assert make_int_input_format(input_formula) == expected
 
     def test_double_negation(self, bool_symbols):

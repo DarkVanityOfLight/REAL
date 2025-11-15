@@ -105,11 +105,12 @@ def make_input_format(
         # --- Connectives ---
         if t in (op.AND, op.OR):
             if negated:
-                # Apply De Morgan
-                ctor = Or if t == op.OR else And
+                # De Morgan
+                ctor = Or if t == op.AND else And
+                return ctor([rec(c, True) for c in n.args()])
             else:
                 ctor = And if t == op.AND else Or
-            return ctor([rec(c, negated) for c in n.args()])
+                return ctor([rec(c, False) for c in n.args()])
 
         if t == op.IMPLIES:
             a, b = n.args()
@@ -156,8 +157,14 @@ def make_input_format(
         if not n.is_ramsey():
             from logging import warning
             warning(f"Unknown node type when walking tree: {n}")
-        rewritten_children = tuple(rec(c, False) for c in n.args())
-        return create_node(t, rewritten_children, n._content.payload)
+
+        children = tuple(rec(c, False) for c in n.args())
+
+        # If we don't know the operator, we preserve negation at this point
+        if negated:
+            return Not(create_node(t, children, n._content.payload))
+        else:
+            return create_node(t, children, n._content.payload)
 
     return rec(node)
 

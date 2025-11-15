@@ -48,7 +48,7 @@ def test_reconstruct_from_coeff_map_zero():
     y = Symbol('y', INT)
     a = Symbol('a', INT)
     # All zero coefficients and zero constant
-    empty = reconstruct_from_coeff_map({}, 0, Int)
+    empty = reconstruct_from_coeff_map({}, 0, INT)
     assert empty.is_int_constant() and empty.constant_value() == 0
 
 
@@ -57,7 +57,7 @@ def test_reconstruct_from_coeff_map_mixed():
     y = Symbol('y', INT)
     a = Symbol('a', INT)
     m = {x: 1, y: 2}
-    node = reconstruct_from_coeff_map(m, 3, Int)
+    node = reconstruct_from_coeff_map(m, 3, INT)
     # Should equal Plus(x, Times(2, y), 3)
     # Check structure
     assert node.is_plus()
