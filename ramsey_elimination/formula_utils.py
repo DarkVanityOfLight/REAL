@@ -1,15 +1,16 @@
 from typing import Callable, List, Mapping, Optional, Set, Tuple, Union, cast, Dict
+from enum import Enum
 
 from pysmt.fnode import FNode
 import pysmt.typing as typ
 import pysmt.operators as operators
 from pysmt.operators import EQUALS, NOT, SYMBOL, TOREAL
-from pysmt.shortcuts import Int, Plus, Symbol, Times, get_env, FreshSymbol
+from pysmt.shortcuts import Int, Plus, Real, Symbol, Times, ToReal, get_env, FreshSymbol
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.formula import ExtendedFormulaManager
 from ramsey_extensions.operators import MOD_NODE_TYPE, TOINT_NODE_TYPE
-from ramsey_extensions.shortcuts import Mod
+from ramsey_extensions.shortcuts import Mod, ToInt
 import ramsey_extensions.operators as cops
 
 FNode = ExtendedFNode # type: ignore[misc]
@@ -116,27 +117,35 @@ def collect_atoms(formula: ExtendedFNode) -> Tuple[
 # Linear term reconstruction and transformation
 # ---------------------------------------------------------------------
 
+CONSTRUCTION = {
+    typ.INT: (Int, ToInt),
+    typ.REAL: (Real, ToReal),
+}
+
 def reconstruct_from_coeff_map(
     m: Mapping[ExtendedFNode, Union[int, float]],
     constant: Union[int, float],
-    num_ctor: Callable[[Union[int, float]], ExtendedFNode]
+    atom_type: typ.PySMTType
 ) -> ExtendedFNode:
-    """
-    Rebuild a linear expression from a variable→coefficient mapping and a constant term.
-    Example:
-        {x: 2, y: -3}, 5  =>  (2*x + (-3)*y + 5)
-    """
+    make_constant, cast_term = CONSTRUCTION[atom_type]
     terms = []
+
     for var, coeff in m.items():
         if coeff == 0:
             continue
-        terms.append(var if coeff == 1 else Times(num_ctor(coeff), var))
+
+        v = var if var.symbol_type() == atom_type else cast_term(var)
+
+        if coeff == 1:
+            terms.append(v)
+        else:
+            terms.append(Times(make_constant(coeff), v))
 
     if constant != 0:
-        terms.append(num_ctor(constant))
+        terms.append(make_constant(constant))
 
     if not terms:
-        return num_ctor(0)
+        return make_constant(0)
     if len(terms) == 1:
         return terms[0]
     return Plus(terms)

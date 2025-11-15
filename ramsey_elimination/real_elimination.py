@@ -1,13 +1,14 @@
 from typing import Tuple, cast
 
 from pysmt.shortcuts import GT, LE, LT, And, Equals, Exists, Implies, Not, Or, Plus, Real
+import pysmt.typing as typ
 
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 from ramsey_elimination.formula_utils import apply_subst, ast_to_terms, collect_atoms, fresh_bool_vector, fresh_real_vector, reconstruct_from_coeff_map
 from ramsey_elimination.simplifications import arithmetic_solver, make_real_input_format
 from ramsey_extensions.fnode import ExtendedFNode
 
-FNode = ExtendedFNode # type: ignore[misc]
+FNode = ExtendedFNode
 
 def eliminate_inequality_atom_real(
     ineq: ExtendedFNode,
@@ -22,7 +23,7 @@ def eliminate_inequality_atom_real(
     l_coeffs, r_coeffs, const = arithmetic_solver(l_coeffs, l_const, r_coeffs, r_const, set(vars1))
 
     wz_coeffs = {v: c for v, c in r_coeffs.items() if v not in vars2}
-    z_and_h_term = reconstruct_from_coeff_map(wz_coeffs, const, Real)  # type: ignore
+    z_and_h_term = reconstruct_from_coeff_map(wz_coeffs, const, typ.REAL)
 
     rx_coeff = apply_subst(l_coeffs, dict(zip(vars1, x)))
     rx_c_coeff = apply_subst(l_coeffs, dict(zip(vars1, x_c)))
@@ -32,12 +33,12 @@ def eliminate_inequality_atom_real(
     sx_c_coeff = apply_subst({v: c for v, c in r_coeffs.items() if v in vars2}, dict(zip(vars2, x_c)))
     sx_inf_coeff = apply_subst({v: c for v, c in r_coeffs.items() if v in vars2}, dict(zip(vars2, x_inf)))
 
-    rx = reconstruct_from_coeff_map(rx_coeff, 0, Real)  # type: ignore
-    rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0, Real)  # type: ignore
-    rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0, Real)  # type: ignore
-    sx = reconstruct_from_coeff_map(sx_coeff, 0, Real)  # type: ignore
-    sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0, Real)  # type: ignore
-    sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0, Real)  # type: ignore
+    rx = reconstruct_from_coeff_map(rx_coeff, 0, typ.REAL)
+    rx_c = reconstruct_from_coeff_map(rx_c_coeff, 0, typ.REAL)
+    rx_inf = reconstruct_from_coeff_map(rx_inf_coeff, 0, typ.REAL)
+    sx = reconstruct_from_coeff_map(sx_coeff, 0, typ.REAL)
+    sx_c = reconstruct_from_coeff_map(sx_c_coeff, 0, typ.REAL)
+    sx_inf = reconstruct_from_coeff_map(sx_inf_coeff, 0, typ.REAL)
 
     lambdas = And(
         Implies(Or(Equals(t_rho_i, Real(-1)), Equals(t_rho_i, Real(1))),
@@ -115,12 +116,12 @@ def eliminate_equality_atom_real(
         for v1, v2 in zip(vars1, vars2)
     }
 
-    ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0, Real)  # type: ignore
-    ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0, Real)  # type: ignore
-    vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0, Real)  # type: ignore
-    vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0, Real)  # type: ignore
-    u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0, Real)  # type: ignore
-    wz_d = reconstruct_from_coeff_map(wz_coeffs, const, Real)  # type: ignore
+    ux_c = reconstruct_from_coeff_map(ux_c_coeffs, 0, typ.REAL)
+    ux_inf = reconstruct_from_coeff_map(ux_inf_coeffs, 0, typ.REAL)
+    vx_c = reconstruct_from_coeff_map(vx_c_coeff, 0, typ.REAL)
+    vx_inf = reconstruct_from_coeff_map(vx_inf_coeff, 0, typ.REAL)
+    u_minus_v_x = reconstruct_from_coeff_map(u_minus_v_x_coeffs, 0, typ.REAL)
+    wz_d = reconstruct_from_coeff_map(wz_coeffs, const, typ.REAL)
 
     return And(
         Equals(ux_c, Real(0)),
@@ -168,7 +169,7 @@ def eliminate_ramsey_real(qformula: ExtendedFNode) -> ExtendedFNode:
     non_trivial_xc = Or([Not(Equals(xc_i, Real(0))) for xc_i in x_c])
     gamma_body = And(prop_skeleton, And(gamma), non_trivial_xc)
     quantified_vars = qs + rho + sigma + t_rho + t_sigma + x + x_c + x_inf
-    return Exists(quantified_vars, gamma_body)  # type: ignore
+    return Exists(quantified_vars, gamma_body)
 
 def full_ramsey_elimination_real(formula: ExtendedFNode):
     """Perform Ramsey elimination on a real-valued formula, including pre-processing."""

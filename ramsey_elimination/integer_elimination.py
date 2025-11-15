@@ -1,6 +1,7 @@
 from typing import Dict, Tuple, cast
 
 from pysmt.shortcuts import LE, LT, GT, GE, And, Equals, Exists, Int, Not, NotEquals, Or, Symbol, Plus, Times
+import pysmt.typing as typ
 
 from ramsey_extensions.fnode import ExtendedFNode
 from ramsey_extensions.shortcuts import Mod, Ramsey
@@ -10,8 +11,7 @@ from ramsey_elimination.formula_utils import apply_subst, ast_to_terms, collect_
 from ramsey_elimination.existential_elimination import eliminate_existential_quantifier
 
 
-FNode = ExtendedFNode # type: ignore[misc]
-
+FNode = ExtendedFNode
 
 def eliminate_inequality_atom_int(ineq: ExtendedFNode, vars1, vars2,
                                   omega: Tuple[ExtendedFNode, ExtendedFNode],
@@ -31,10 +31,10 @@ def eliminate_inequality_atom_int(ineq: ExtendedFNode, vars1, vars2,
     rx   = apply_subst({v: c for v, c in r_coeffs.items() if v in vars2}, {vars2[i]: x[i] for i in range(len(vars2))})
 
     # Rebuild arithmetic expressions
-    left_x   = reconstruct_from_coeff_map(lx,  0, Int)
-    left_x0  = reconstruct_from_coeff_map(lx0, 0, Int)
-    right_x0 = reconstruct_from_coeff_map(rx0, const, Int)
-    right_x  = reconstruct_from_coeff_map(rx,  0, Int)
+    left_x   = reconstruct_from_coeff_map(lx,  0, typ.INT)
+    left_x0  = reconstruct_from_coeff_map(lx0, 0, typ.INT)
+    right_x0 = reconstruct_from_coeff_map(rx0, const, typ.INT)
+    right_x  = reconstruct_from_coeff_map(rx,  0, typ.INT)
 
     # Construct guarded Ramsey constraints
     g1 = Or(omega[0], And(LE(left_x0, p[0]), LE(left_x, Int(0))))
@@ -72,8 +72,8 @@ def eliminate_mod_eq_atom_int(eq: ExtendedFNode, vars1, vars2, x, x0):
     rx0_map = apply_subst(r_coeffs, {vars2[i]: x0[i] for i in range(len(vars2))})
 
     # Reconstruct expressions
-    lx, lx0 = reconstruct_from_coeff_map(lx_map, 0, Int), reconstruct_from_coeff_map(lx0_map, 0, Int)
-    rx, rx0 = reconstruct_from_coeff_map(rx_map, 0, Int), reconstruct_from_coeff_map(rx0_map, const, Int)
+    lx, lx0 = reconstruct_from_coeff_map(lx_map, 0, INT), reconstruct_from_coeff_map(lx0_map, 0, INT)
+    rx, rx0 = reconstruct_from_coeff_map(rx_map, 0, INT), reconstruct_from_coeff_map(rx0_map, const, INT)
 
     def negate_if(expr): return Not(expr) if is_negated else expr
 
@@ -95,8 +95,8 @@ def eliminate_eq_atom_int(eq: ExtendedFNode, vars1, vars2, x, x0):
     rx_map  = apply_subst({v: c for v, c in r_coeffs.items() if v in vars2}, {vars2[i]: x[i] for i in range(len(vars2))})
     rx0_map = apply_subst(r_coeffs, {vars2[i]: x0[i] for i in range(len(vars2))})
 
-    left_x, right_x = reconstruct_from_coeff_map(lx_map, 0, Int), reconstruct_from_coeff_map(rx_map, 0, Int)
-    left_x0, right_x0 = reconstruct_from_coeff_map(lx0_map, 0, Int), reconstruct_from_coeff_map(rx0_map, const, Int)
+    left_x, right_x = reconstruct_from_coeff_map(lx_map, 0, INT), reconstruct_from_coeff_map(rx_map, 0, INT)
+    left_x0, right_x0 = reconstruct_from_coeff_map(lx0_map, 0, INT), reconstruct_from_coeff_map(rx0_map, const, INT)
 
     return And(
         Equals(left_x, Int(0)),

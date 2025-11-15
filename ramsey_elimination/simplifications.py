@@ -153,8 +153,9 @@ def make_input_format(
             return atom_rewrite(n_new)
 
         # --- Recurse for other composite nodes ---
-        from logging import warning
-        warning(f"Unknown node type when walking tree: {n}")
+        if not n.is_ramsey():
+            from logging import warning
+            warning(f"Unknown node type when walking tree: {n}")
         rewritten_children = tuple(rec(c, False) for c in n.args())
         return create_node(t, rewritten_children, n._content.payload)
 

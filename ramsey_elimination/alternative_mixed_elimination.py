@@ -18,7 +18,6 @@ from math import floor
 from ramsey_extensions.shortcuts import Ramsey
 
 
-#TODO: ToInt operations
 
 @dataclass
 class EqualityDecomposition:
@@ -124,10 +123,10 @@ def decompose_equality(phi: ExtendedFNode) -> EqualityDecomposition:
 
     C_i = floor(C)
     C_r = C - C_i
-    real_part = Equals(reconstruct_from_coeff_map(real_terms, 0, Real),
+    real_part = Equals(reconstruct_from_coeff_map(real_terms, 0, typ.REAL),
                        Plus(real_bridge, Real(C_r)))
     int_part = Equals(
-        Plus(reconstruct_from_coeff_map(int_terms, 0, Int), int_bridge),
+        Plus(reconstruct_from_coeff_map(int_terms, 0, typ.INT), int_bridge),
         Int(C_i)
     )
 
@@ -149,11 +148,11 @@ def decompose_inequality(phi: ExtendedFNode) -> StrictInequalityDecomposition:
     C_i = floor(C)
     C_r = C - C_i
 
-    real_part: ExtendedFNode = Equals(reconstruct_from_coeff_map(real_terms, 0, Real),
+    real_part: ExtendedFNode = Equals(reconstruct_from_coeff_map(real_terms, 0, typ.REAL),
                        Plus(real_dummy, real_bridge))
 
     dummy_restriction: Tuple[ExtendedFNode, ExtendedFNode] = (LE(Real(0), real_dummy), LT(real_dummy, Real(1)))
-    int_reconstructed: ExtendedFNode = Plus(reconstruct_from_coeff_map(int_terms, 0, Int), int_bridge)
+    int_reconstructed: ExtendedFNode = Plus(reconstruct_from_coeff_map(int_terms, 0, typ.INT), int_bridge)
     
     int_ineq = LT(int_reconstructed, Int(C_i))
     real_ineq = And(Equals(int_reconstructed, Int(C_i)), LT(real_dummy, Real(C_r)))
